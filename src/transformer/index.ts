@@ -1,11 +1,15 @@
 // Public surface of the transformer primitives.
 //
 // Pure functions: given a directive-bearing module source, produce a
-// transformed source with `registerClientReference` / `registerServerReference`
-// calls injected. Environment-agnostic — no Vite, no Rollup, no Node-loader
-// dependencies. The Vite plugin (`vite-plugin-react-server`) wraps these to
-// wire them into Vite's transform hook; canonical Node ESM loader setups can
-// call them directly.
+// transformed source with the matching `registerClientReference` or
+// `registerServerReference` calls injected. The output is what
+// `react-server-dom-esm` expects to find at runtime when the server
+// renderer encounters a client / server boundary.
+//
+// Bundler- and runtime-agnostic. A Vite plugin can call these from its
+// `transform` hook; a Webpack loader can call them from its loader chain;
+// a Node ESM `register()` setup can call them from its `load` hook.
+// The transformer doesn't know or care which.
 
 export { parse } from "./parse.js";
 export { createTransformer } from "./createTransformer.js";

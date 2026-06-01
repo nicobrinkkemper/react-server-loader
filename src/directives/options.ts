@@ -1,21 +1,25 @@
-// Minimal options surface for the directive engine.
+// Options the directive engine reads at call time.
 //
-// vprs ships a richer `DirectiveOptions` shape that pulls from its
-// `TransformOptions` / `LoaderConfig` types — those carry build-orchestration
-// concerns (panic thresholds, server/client function detection, etc.) that
-// aren't part of the directive-engine contract. This package keeps the
-// surface to what the engine actually reads from `options`:
+// The directive engine is the smallest reusable piece of the package — a
+// pure function set that decides whether a given module source declares a
+// React Server Components boundary directive (`"use client"` /
+// `"use server"`) and where the directive sits in the AST. The options
+// shape mirrors that scope: only the four fields the engine actually
+// inspects.
 //
-//   - `verbose` flag — gates a few logger.info calls in analyzeModule.
-//   - `logger` — minimal Logger interface (info/warn/error). Defaults to a
-//     no-op so callers don't need to wire up Vite's logger or a console fork
-//     just to use the engine.
-//   - `loader.parse` — optional parser override (defaults to the package's
-//     built-in acorn parse). vprs's build transformer passes Rollup's
-//     `this.parse` here so the engine sees an AST consistent with the rest
-//     of the build pipeline.
-//   - `loader.getDirectiveType` — optional mapping from directive string to
-//     "client" | "server". Defaults to the React-RSC mapping.
+//   - `verbose` — gates the `logger.info` calls that trace which module
+//     is being analysed. Useful for debugging a misbehaving boundary.
+//   - `logger` — a minimal sink (`info` / `warn` / `error`). Defaults to a
+//     no-op so the engine stays silent unless a host explicitly wires a
+//     backend.
+//   - `loader.parse` — supply an AST instead of letting the engine call
+//     its built-in acorn parse. A bundler that already has the AST in
+//     hand (Rollup, esbuild, swc) can pass `this.parse` here so the
+//     engine's classification stays consistent with the rest of the
+//     build pipeline.
+//   - `loader.getDirectiveType` — map a directive string to
+//     `"client" | "server"`. Defaults to React's RSC mapping; override
+//     to extend or replace the recognised directive vocabulary.
 
 import type { Program } from "./types.js";
 
@@ -52,9 +56,10 @@ export const NULL_LOGGER: Logger = {
 };
 
 /**
- * Console-based logger — what the transformer primitives use by default.
- * Mirrors the shape of Vite's `createLogger()` so vprs-style transformer
- * tests that spy on `console.log` keep matching.
+ * `console`-backed logger. Use when you want the engine's verbose trace
+ * to print to stdout without wiring a custom backend. Each method maps
+ * straight to the matching `console` call so spy-based tests that watch
+ * `console.log` / `console.warn` keep working.
  */
 export const CONSOLE_LOGGER: Logger = {
   info(msg: string) {

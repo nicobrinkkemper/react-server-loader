@@ -1,14 +1,20 @@
-// Default loader config used by the transformer primitives.
+// Default configuration for the React Server Components contract.
 //
-// Ported from vprs's `plugin/config/defaults.tsx` (DEFAULT_LOADER_CONFIG +
-// DEFAULT_CONFIG.RSC_LOADER). The transformer functions reach for this when
-// the caller doesn't supply an explicit `loader` option.
+// These values match what React publishes in `react-server-dom-esm`: a
+// server bundle exports `registerClientReference` and
+// `registerServerReference`, the default transport entry points are
+// `react-server-dom-esm/server`, and the recognised file-level
+// directives are `"use client"` and `"use server"`. The transformer
+// primitives reach for this object when a caller doesn't pass an
+// explicit `loader` option.
 //
-// React-RSC-contract concerns (registerClientReferenceName, importServerPath,
-// directive patterns, RSC default register names) live here because they're
-// part of the RSC contract — not Vite-orchestration concerns. Per-env
-// overrides match React's convention (test mode imports from
-// `react-server-dom-esm/server.node` instead of the default `server`).
+// Override any field via the `loader` option when integrating with a
+// different transport (Webpack, Parcel, etc.) or when running under
+// React's `react-server-dom-esm/server.node` test-mode build. The
+// `DEFAULT_CONFIG.RSC_LOADER` map keys each `NODE_ENV` against the
+// appropriate default — production and development share the same entry
+// points, while test mode resolves explicitly to `.node` to match
+// React's own internal test wiring.
 
 import { parse } from "./parse.js";
 import {

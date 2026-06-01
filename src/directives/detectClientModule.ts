@@ -45,7 +45,7 @@ export type DetectClientModuleOpts = {
 };
 
 /**
- * The single answer to "is this a client module?" for vprs.
+ * Decides whether a module is a React client component.
  *
  * Recognises a module as client when EITHER:
  *   1. its filename matches the `.client.[cm]?[jt]sx?$` convention, OR

@@ -1,7 +1,10 @@
-// Node-runtime env helpers used by the transformer primitives.
+// Node-runtime helpers shared across the transformer primitives.
 //
-// Ported from vprs's `plugin/config/getNodeEnv.ts`. Kept minimal — no
-// build-config concerns, just "what mode is this Node process running in?".
+// Intentionally small: just enough to answer "what mode is this Node
+// process running in?" and "is the `react-server` resolution condition
+// active?". A host that already has richer runtime introspection (a
+// build tool, a framework) can ignore these and pass concrete values
+// through the loader / transformer options instead.
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -26,8 +29,12 @@ export function getNodeEnv<E extends string = NodeEnv>(
 
 /**
  * Detects whether the current Node process is running under the
- * `react-server` condition (`--conditions react-server` on the command line,
- * or NODE_OPTIONS containing the same). Mirrors vprs's getCondition.
+ * `react-server` resolution condition — set with `--conditions react-server`
+ * on the command line, or via `NODE_OPTIONS` containing the same flag.
+ *
+ * Servers rendering React Server Components run under this condition so
+ * that `react` and `react-server-dom-esm` resolve to their server-side
+ * exports.
  */
 export function isReactServerCondition(): boolean {
   const argv = process.execArgv?.join(" ") ?? "";

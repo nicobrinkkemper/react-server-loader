@@ -34,9 +34,9 @@ export async function analyzeModule(
   }
   // Collect exports from the AST first. `result` is a `{ ast, ... }` shape
   // by this point; the `exports` field is optional on the parser return type
-  // (vprs's build transformer passes pre-collected exports through; the
-  // package's built-in parse does not). Cast is safe because the read is
-  // guarded by `"exports" in result`.
+  // — a bundler that already collected exports while parsing can pass them
+  // through, while the package's built-in parse does not. Cast is safe
+  // because the read is guarded by `"exports" in result`.
   const resultAny = result as {
     ast: Program;
     exports?: ParsedExports;

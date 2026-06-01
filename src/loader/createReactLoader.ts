@@ -194,9 +194,10 @@ export function createReactLoader(options: CreateReactLoaderOptions): {
         : false);
 
     if (!isServer && !isClient) {
-      // Not an RSC boundary; return whatever modifications we made
-      // (the CJS-import rewrite is still in effect for plain modules
-      // running under the react-server condition).
+      // Not an RSC boundary. Return the (possibly CJS-import-rewritten)
+      // source untouched — plain modules running under the react-server
+      // condition still need the rewrite to compile React's CommonJS
+      // exports against ESM named-import syntax.
       return { ...result, source };
     }
 
