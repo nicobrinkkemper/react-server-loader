@@ -1,11 +1,10 @@
 {
   "name": "react-server-loader",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Loader-side tooling for React Server Components in ESM environments — directive detection, transformer primitives, and Node ESM loader scaffolding. Transport-agnostic.",
   "type": "module",
   "license": "MIT",
   "author": "Nico Brinkkemper",
-  "private": true,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
