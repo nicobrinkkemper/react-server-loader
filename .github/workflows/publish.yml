@@ -1,0 +1,103 @@
+name: Build + publish
+
+# Runs the build-rsl.sh pipeline against a given React ref and publishes
+# the resulting package. Triggered manually so the maintainer chooses
+# which React tag becomes a react-server-loader release.
+#
+# Dry-run by default: the job builds, packs, and uploads the tarball as
+# a workflow artifact for inspection. Set `dry_run: false` on dispatch
+# to actually `npm publish` (requires the NPM_TOKEN secret to be set
+# on the repo).
+
+on:
+  workflow_dispatch:
+    inputs:
+      react_ref:
+        description: "facebook/react git ref to build against (tag, branch, or commit SHA)"
+        type: string
+        required: true
+        default: "main"
+      channel:
+        description: "React release channel"
+        type: choice
+        required: true
+        default: experimental
+        options:
+          - experimental
+          - stable
+      dry_run:
+        description: "Pack-only (no publish). Untick to publish to npm."
+        type: boolean
+        required: true
+        default: true
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout react-server-loader
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install Java (Google Closure Compiler — used by React's build)
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Enable yarn (React's repo uses yarn workspaces)
+        run: corepack enable
+
+      - name: Install rsl deps
+        run: npm install
+
+      - name: Build the TypeScript surface
+        run: npm run build
+
+      - name: Run unit tests
+        run: npx vitest --run
+
+      - name: Build the vendored react-server-dom-esm
+        run: |
+          bash scripts/build-rsl.sh \
+            --channel "${{ inputs.channel }}" \
+            --react-ref "${{ inputs.react_ref }}"
+
+      - name: Sync package.json version to the vendored react-server-dom-esm
+        id: version
+        run: |
+          VERSION=$(node -p "require('./vendor/react-server-dom-esm/package.json').version")
+          echo "react-server-dom-esm version: $VERSION"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Pack tarball
+        run: npm pack
+
+      - name: Upload tarball as workflow artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: react-server-loader-${{ steps.version.outputs.version }}
+          path: react-server-loader-*.tgz
+          retention-days: 30
+
+      - name: Publish to npm
+        if: ${{ inputs.dry_run == false }}
+        run: npm publish react-server-loader-*.tgz --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: |
+          echo "### Build summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| React ref | \`${{ inputs.react_ref }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Channel | ${{ inputs.channel }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| react-server-dom-esm version | ${{ steps.version.outputs.version }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Mode | ${{ inputs.dry_run == true && 'dry-run (artifact only)' || 'published' }} |" >> "$GITHUB_STEP_SUMMARY"

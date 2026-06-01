@@ -131,6 +131,32 @@ Install matching versions for `react`, `react-dom`, and
 `react-server-loader` and the peer-dep checker will catch skew at
 install time.
 
+## Building a release
+
+`scripts/build-rsl.sh` clones React (or uses the sibling checkout at
+`../react` if present), runs React's own build under the requested
+`RELEASE_CHANNEL`, vendors `react-server-dom-esm` into `vendor/`, and
+writes the publishable shim entry points. Typical local invocation:
+
+```bash
+# experimental (default — builds against React main)
+./scripts/build-rsl.sh
+
+# stable, against a specific React tag
+./scripts/build-rsl.sh --channel stable --react-ref v19.0.0
+
+# point at an arbitrary React checkout
+./scripts/build-rsl.sh --react-dir /path/to/react
+```
+
+The build script needs `yarn`, `node >= 22`, and `java` (React's build
+runs Closure Compiler).
+
+For releases, the `.github/workflows/publish.yml` workflow runs the
+same pipeline on a fresh checkout and packs the tarball (or publishes
+it, when dispatched with `dry_run: false` and the `NPM_TOKEN` secret
+set on the repo).
+
 ## Status
 
 The package is in active development. Public API is still settling — the
