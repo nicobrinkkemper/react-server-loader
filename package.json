@@ -24,6 +24,16 @@
       "types": "./dist/loader/index.d.ts",
       "default": "./dist/loader/index.js"
     },
+    "./server": "./vendor/react-server-dom-esm/server.node.js",
+    "./server.node": "./vendor/react-server-dom-esm/server.node.js",
+    "./client": {
+      "node": "./vendor/react-server-dom-esm/client.node.js",
+      "default": "./vendor/react-server-dom-esm/client.browser.js"
+    },
+    "./client.browser": "./vendor/react-server-dom-esm/client.browser.js",
+    "./client.node": "./vendor/react-server-dom-esm/client.node.js",
+    "./static": "./vendor/react-server-dom-esm/static.node.js",
+    "./static.node": "./vendor/react-server-dom-esm/static.node.js",
     "./package.json": "./package.json"
   },
   "files": [
