@@ -142,17 +142,18 @@ mkdir -p "$VENDOR_DIR/react-server-dom-esm"
 cp -r "$ROLLUP_OUTPUT"/. "$VENDOR_DIR/react-server-dom-esm/"
 cp "$SRC_PKG_JSON" "$VENDOR_DIR/react-server-dom-esm/package.json"
 
-# React's source includes the shim entrypoints (index.js, client.js,
-# client.browser.js, client.node.js, server.js, server.node.js,
-# static.js, static.node.js) alongside the package.json. The rollup
-# build produces only cjs/ and esm/; the shims are how consumers
-# import the package (they re-export from cjs/ based on conditions).
+# React's source includes flow-typed shim files alongside the
+# package.json (index.js, client.js, server.node.js, …). Those source
+# shims aren't directly loadable in Node — they're an ESM/@flow shape
+# rewritten by React's packaging step into the conditional-require
+# shape consumers actually import. Generate the publishable shims
+# here instead of running React's full packaging step (which fails
+# on unrelated downstream packages on a clean checkout).
 PKG_SRC="$REACT_DIR/packages/react-server-dom-esm"
-for shim in index.js client.js client.browser.js client.node.js \
-            server.js server.node.js static.js static.node.js \
-            LICENSE README.md; do
-  [ -f "$PKG_SRC/$shim" ] && cp "$PKG_SRC/$shim" "$VENDOR_DIR/react-server-dom-esm/$shim"
+for f in LICENSE README.md; do
+  [ -f "$PKG_SRC/$f" ] && cp "$PKG_SRC/$f" "$VENDOR_DIR/react-server-dom-esm/$f"
 done
+node "$SCRIPT_DIR/generate-shims.mjs"
 
 VERSION=$(node -p "require('$VENDOR_DIR/react-server-dom-esm/package.json').version" 2>/dev/null || echo "unknown")
 
