@@ -1,11 +1,9 @@
 // Public surface of the transformer primitives.
 //
-// Populate from vite-plugin-react-server in a follow-up:
-//   - createTransformer        (plugin/loader/createTransformer.ts)
-//   - transformModuleIfNeeded  (plugin/loader/transformModuleIfNeeded.ts)
-//   - transformClientModule    (plugin/loader/transformClientModule.ts)
-//   - transformServerModule    (plugin/loader/transformServerModule.ts)
-//   - transformNonServerEnvironment (plugin/loader/transformNonServerEnvironment.ts)
-//   - removeDirectives, removeRanges, sourceMap helpers
-//   - parse, transformWithAcornLoose
-export {};
+// Today this is just `parse` (an acorn-based parser that returns a Rollup-
+// shaped `{ ast, code, map? }`). Source-transformation primitives — the
+// "given a `use client` module source, produce a transformed source with
+// `registerClientReference` calls injected" engine — land in a follow-up
+// once the directive engine is locked in.
+
+export { parse } from "./parse.js";

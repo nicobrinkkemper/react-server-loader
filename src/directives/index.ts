@@ -1,9 +1,15 @@
-// Public surface of the directive engine.
-//
-// Populate from vite-plugin-react-server in a follow-up:
-//   - detectClientModule          (plugin/loader/directives/detectClientModule.ts)
-//   - sourceHasTopLevelClientDirective (plugin/loader/directives/sourceHasTopLevelClientDirective.ts)
-//   - hasFileLevelClientDirective (plugin/loader/directives/hasFileLevelClientDirective.ts)
-//   - analyzeDirectives           (plugin/loader/directives/analyzeDirectives.ts)
-//   - analyzeModule               (plugin/loader/directives/analyzeModule.ts)
-export {};
+export * from "./addLocalExportedNames.js";
+export * from "./getExports.js";
+export * from "./analyzeDirectives.js";
+export * from "./analyzeModule.js";
+export * from "./detectClientModule.js";
+export * from "./hasFileLevelClientDirective.js";
+export * from "./sourceHasTopLevelClientDirective.js";
+export * from "./collectExports.js";
+export * from "./getFunctionBody.js";
+export * from "./getFunctionName.js";
+export * from "./getQualifiedName.js";
+export * from "./processFunctionNode.js";
+export * from "./typeGuards.js";
+export * from "./utils.js";
+export * from "./types.js";
