@@ -1,0 +1,48 @@
+{
+  "name": "react-server-loader",
+  "version": "0.0.0",
+  "description": "Loader-side tooling for React Server Components in ESM environments — directive detection, transformer primitives, and Node ESM loader scaffolding. Transport-agnostic.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Nico Brinkkemper",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./directives": {
+      "types": "./dist/directives/index.d.ts",
+      "default": "./dist/directives/index.js"
+    },
+    "./transformer": {
+      "types": "./dist/transformer/index.d.ts",
+      "default": "./dist/transformer/index.js"
+    },
+    "./loader": {
+      "types": "./dist/loader/index.d.ts",
+      "default": "./dist/loader/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "echo 'no tests yet' && exit 0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "acorn": "^8.14.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}
