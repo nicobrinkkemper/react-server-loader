@@ -13,3 +13,4 @@ export * from "./processFunctionNode.js";
 export * from "./typeGuards.js";
 export * from "./utils.js";
 export * from "./types.js";
+export * from "./findDirectiveMatches.js";

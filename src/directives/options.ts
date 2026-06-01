@@ -20,9 +20,9 @@
 import type { Program } from "./types.js";
 
 export interface Logger {
-  info(msg: string): void;
-  warn(msg: string): void;
-  error(msg: string): void;
+  info(msg: string, options?: unknown): void;
+  warn(msg: string, options?: unknown): void;
+  error(msg: string, options?: unknown): void;
 }
 
 export type ParseFn = (
@@ -51,9 +51,29 @@ export const NULL_LOGGER: Logger = {
   error() {},
 };
 
+/**
+ * Console-based logger — what the transformer primitives use by default.
+ * Mirrors the shape of Vite's `createLogger()` so vprs-style transformer
+ * tests that spy on `console.log` keep matching.
+ */
+export const CONSOLE_LOGGER: Logger = {
+  info(msg: string) {
+    console.log(msg);
+  },
+  warn(msg: string) {
+    console.warn(msg);
+  },
+  error(msg: string) {
+    console.error(msg);
+  },
+};
+
 /** Default directive-type mapping for React Server Components. */
 export const defaultGetDirectiveType: GetDirectiveTypeFn = (directive) => {
   if (directive === "use server") return "server";
   if (directive === "use client") return "client";
   return undefined;
 };
+
+/** Panic threshold for handleError-style escalation. */
+export type PanicThreshold = "none" | "critical_errors" | "all_errors";
