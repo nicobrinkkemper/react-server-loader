@@ -1,10 +1,16 @@
-// Public surface of the Node ESM loader scaffolding.
+// Public surface of the Node ESM loader layer.
 //
-// Populate from vite-plugin-react-server in a follow-up:
-//   - load / resolve hooks (parametrised — consumer supplies the transport)
-//   - createDefaultLoader (plugin/loader/createDefaultLoader.ts)
-//   - registerLoaders     (plugin/worker/registerLoaders.ts)
-//
-// The bare loader must be wireable via `node --import <pkg>/register` for
-// canonical use; the worker / Vite path remains an opt-in wrap-around.
-export {};
+// `createReactLoader` returns `load` and `resolve` hooks compatible with
+// `node:module#register` and `--experimental-loader`. The loader is
+// transport-agnostic: defaults match the React-RSC contract published in
+// `react-server-dom-esm`, but the `options.loader` shape lets you wire
+// the loader against a different transport. The hosted-path policy
+// (the `moduleID` callback) is consumer-provided — the loader has no
+// opinion on where a framework will serve its client chunks from.
+
+export {
+  createReactLoader,
+  type CreateReactLoaderOptions,
+  type ModuleIDResolver,
+  type OnTransformCallback,
+} from "./createReactLoader.js";
