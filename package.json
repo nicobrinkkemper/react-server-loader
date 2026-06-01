@@ -30,11 +30,17 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "vendor",
+    "scripts/patches",
+    "scripts/build-rsl.sh"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "echo 'no tests yet' && exit 0"
+    "test": "echo 'no tests yet' && exit 0",
+    "build:vendor": "bash scripts/build-rsl.sh",
+    "build:vendor:stable": "bash scripts/build-rsl.sh --channel stable",
+    "build:vendor:full": "bash scripts/build-rsl.sh --full"
   },
   "engines": {
     "node": ">=22.0.0"
