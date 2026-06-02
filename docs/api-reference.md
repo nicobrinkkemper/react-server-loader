@@ -18,7 +18,7 @@ listed here — they are the supported, consumer-facing surface.
 | [`react-server-loader/server`](#transport-serverclientstatic) | vendored transport — server surface |
 | [`react-server-loader/client`](#transport-serverclientstatic) | vendored transport — client surface |
 | [`react-server-loader/static`](#transport-serverclientstatic) | vendored transport — static/prerender surface |
-| [`react-server-loader`](#root-re-exports) | re-exports the headline three |
+| [`react-server-loader`](#root-re-exports) | re-exports the full public surface |
 
 For the conceptual picture, start with the [README](../README.md). Implementation
 details live under [`docs/internals/`](internals/).
@@ -376,8 +376,11 @@ import {
 } from "react-server-loader";
 ```
 
-The root entry re-exports the headline three for convenience. For everything
-else, import from the specific subpath above.
+The root entry re-exports the full public surface for convenience —
+`createReactLoader`, `detectClientModule`, `sourceHasTopLevelClientDirective`,
+`analyzeModule`, `createTransformer`, `parse`, `transformModule`,
+`DEFAULT_LOADER_CONFIG`, and the `CONSOLE_LOGGER` / `NULL_LOGGER` backends.
+The transport (`/server`, `/client`, `/static`) is only on its subpaths.
 
 ---
 

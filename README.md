@@ -103,7 +103,7 @@ path argument lines up — is in
 | `react-server-loader/server` (`/server.node`) | Vendored transport, server: `renderToPipeableStream`, `registerClientReference`, `registerServerReference`, `decodeReply`, `createTemporaryReferenceSet` (needs `--conditions react-server`). |
 | `react-server-loader/client` (`/client.node`, `/client.browser`) | Vendored transport, client: `createFromNodeStream`, `createServerReference`. |
 | `react-server-loader/static` (`/static.node`) | Vendored transport, static entry. In this React build it re-exports the server surface — `react-server-dom-esm` ships no separate static module. |
-| `react-server-loader` | Re-exports the headline three (`createReactLoader`, `detectClientModule`, `createTransformer`). |
+| `react-server-loader` | Re-exports the full public surface for convenience (headline: `createReactLoader`, `detectClientModule`, `createTransformer`). |
 
 Import only from these subpaths and the symbols named here — they are the
 supported, consumer-facing surface. AST type-guards and low-level transform
