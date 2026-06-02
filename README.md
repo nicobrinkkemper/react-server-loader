@@ -46,9 +46,9 @@ Either way you need a React **19+** build with React Server Components
 support. The two trains version differently — see *Versioning* below for
 the full rationale:
 
-- **stable** → version `19.<minor>.<rsl-patch>`, `react`/`react-dom` peer
-  `>=<vendored React> <next minor>` (e.g. `>=19.2.7 <19.3.0`). Any matching
-  React 19.2.x satisfies it, so the install just works.
+- **stable** → version `<ReactVersion>` (e.g. `19.2.7`), `react`/`react-dom`
+  peer `^<ReactVersion>` (e.g. `^19.2.7`). Any matching React 19.x at or above
+  it satisfies the install.
 - **experimental** → version `0.0.0-experimental-<sha>-<date>`,
   `react`/`react-dom` peer pinned to that **exact** string.
 
@@ -151,60 +151,44 @@ createReactLoader({
 
 ## Versioning
 
-`react-server-loader` carries two things that version on different clocks:
-its **own code** (the directive engine, transformer, loader, shim
-generation) and a **vendored `react-server-dom-esm`** built from a specific
-React. React doesn't publish `react-server-dom-esm`, so we build and vendor
-it — but rsl's own code can need a fix between React releases. The two
-trains handle that differently.
+**`react-server-loader`'s version === the `react-server-dom-esm` (React)
+version it vendors.** The transport is hard-bound to one React build's
+internals — it reads React's `ReactSharedInternals` and throws on a
+"React Element from an older version of React" if paired with a different
+copy. So the version is the unambiguous signal of *which React's internals*
+the transport expects; it must match, and the peer must keep consumers on a
+compatible React. This is exactly the convention React's own published
+transports (`react-server-dom-webpack` / `-parcel`) use.
 
 | train | version | `react`/`react-dom` peer | dist-tag |
 | --- | --- | --- | --- |
-| **stable** | `19.<minor>.<rsl-patch>` (e.g. `19.2.0`, `19.2.1`) | `>=<vendored React> <next minor>` (e.g. `>=19.2.7 <19.3.0`) | `latest` |
-| **experimental** | `0.0.0-experimental-<sha>-<date>` | `=` that exact string | `experimental` |
+| **stable** | `<ReactVersion>` (e.g. `19.2.7`) | `^<ReactVersion>` (e.g. `^19.2.7`) | `latest` |
+| **experimental** | `0.0.0-experimental-<sha>-<date>` | that **exact** string | `experimental` |
 
-The two dist-tags never move each other's pointer, so the trains coexist.
+`build-rsl.sh` stamps both onto rsl's `package.json` from the React it just
+vendored. The two dist-tags never move each other's pointer, so the trains
+coexist.
 
-### Stable — `@types`-style, rsl owns the patch
+### Stable
 
-The **major.minor** tracks React's minor (`19.2.x` → React 19.2), but the
-**patch** is `react-server-loader`'s own revision — exactly how
-`@types/react@19.0.x` tracks React 19.0 while owning the `.x`. The peer
-floors at the React build we vendored and caps at the next minor, so any
-React 19.2.z (z ≥ vendored) satisfies it.
+Version and `react`/`react-dom` peer both come from the vendored React:
+version `19.2.7`, peer `^19.2.7`. React keeps the RSC ABI stable within a
+major, so the `^` floor at the vendored build is safe up to the next major —
+the same range `react-server-dom-webpack@19.2.7` ships. To cut a stable
+release, rebuild against a React tag (`--react-ref v19.2.8`); the version and
+peer follow the vendored transport automatically.
 
-This exists because the version *can't* be React's exact version (`19.2.7`):
-npm versions are immutable and nothing sorts between `19.2.7` and `19.2.8`,
-so an rsl-only bug would be unshippable until React itself released. Owning
-the patch slot fixes that.
+### Experimental
 
-**To cut a stable release (React refresh or an rsl-only fix):**
-
-1. Bump `version` in `package.json` — increment the patch for the same
-   React minor (`19.2.0` → `19.2.1`), or set `19.<newminor>.0` when moving
-   to a new React minor. Every publish needs a fresh patch (npm versions are
-   immutable); `build-rsl.sh` warns if major.minor has drifted from React.
-2. Rebuild: `./scripts/build-rsl.sh --channel stable --react-ref vX.Y.Z`.
-   It writes the peer floor from the React you vendored and keeps your
-   `package.json` version.
-3. `npm pack` and publish locally (see *Building a release*), `--tag latest`.
-
-The version no longer encodes React's exact *patch* (the peer range and
-this doc do) — the trade for being able to ship a fix any time.
-
-### Experimental — exact snapshot of one React build
-
-Mirrors React's own experimental format
-(`0.0.0-experimental-<sha>-<date>`, where `<sha>` is the 8-char React commit
-and `<date>` its committer date) and pins `react`/`react-dom` to that exact
-string, so it lines up byte-for-byte with `react@experimental` built from
-the same commit. `build-rsl.sh` derives both from the React checkout.
-
-A `0.0.0-experimental-…` version sorts below `1.0.0`, so it can never
-satisfy a `^19`/stable range — the experimental train stays opt-in. To
-**patch** an experimental build (an rsl fix against the same React commit),
-republish with a trailing `.N` — `0.0.0-experimental-<sha>-<date>.1` sorts
-*above* the original, and the `experimental` dist-tag moves to it.
+Mirrors React's own experimental format — `0.0.0-experimental-<sha>-<date>`,
+where `<sha>` is the 8-char React commit and `<date>` its committer date —
+and pins `react`/`react-dom` to that **exact** string. The pin must be exact:
+experimental internals change per commit, so a wider range would let a
+consumer pair this transport with a *different* experimental React and crash
+on the `ReactSharedInternals` mismatch. A `0.0.0-experimental-…` version
+sorts below `1.0.0`, so it never satisfies a `^19` range — the experimental
+train stays opt-in. Patch a build (an rsl fix against the same React commit)
+by republishing with a trailing `.N`, which sorts *above* the original.
 
 ## Building a release
 

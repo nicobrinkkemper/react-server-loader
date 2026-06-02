@@ -159,29 +159,28 @@ REACT_VERSION=$(node -p "require('$VENDOR_DIR/react-server-dom-esm/package.json'
 
 echo ""
 echo "==> Stamping react-server-loader/package.json for channel '$CHANNEL' ..."
-# rsl's OWN package.json is the single source of truth for what gets
-# published — version and react/react-dom peer. The build derives the peer
-# (and, for experimental, the version) from the React it just vendored, so
-# a local `npm pack && npm publish` is correct with no extra steps. The
-# vendored transport's own package.json is left exactly as React shipped it.
+# rsl's version === the vendored react-server-dom-esm version, because the
+# transport is hard-bound to one React build's internals (it reads React's
+# `ReactSharedInternals`). The version is therefore the unambiguous signal of
+# *which React's internals* this transport expects — so it must match the
+# transport/React exactly, and the peer must keep consumers on a compatible
+# React. The build stamps both onto rsl's own package.json (single source of
+# truth); the vendored transport's package.json is left as React shipped it.
 #
-# Two schemes, one per channel (see README "Versioning"):
-#
-# experimental — snapshot of one React build, mirroring React's own format
-#   (facebook/react scripts/rollup/build-all-release-channels.js):
-#     sha     = `git rev-parse HEAD`, first 8 chars
-#     date    = committer date of that sha, YYYYMMDD, in the commit's own
-#               timezone (NOT UTC — matches React's --date=format:%Y%m%d)
-#     version = 0.0.0-experimental-<sha>-<date>, react/react-dom peer = that exact string.
-#   Patch by republishing with a trailing `.N`. (Don't commit this version
-#   bump — it's a per-build snapshot; `git checkout package.json` after.)
-#
-# stable — @types-style: major.minor tracks React, the PATCH is rsl's own
-#   revision (maintainer-bumped in package.json), so rsl can ship a fix
-#   without waiting for a new React release. The build leaves the version
-#   alone and only sets the peer floor.
-#     version = react-server-loader's own (e.g. 19.2.0, 19.2.1, …)
-#     peer    = ">=<vendored React> <next React minor>"  (e.g. >=19.2.7 <19.3.0)
+# This mirrors React's own published transports
+# (react-server-dom-webpack / -parcel):
+#   stable       -> version = <ReactVersion> (e.g. 19.2.7), peer "^<ReactVersion>".
+#                   React keeps the RSC ABI stable within a major, so ^ floors
+#                   at the vendored build and is safe up to the next major.
+#   experimental -> version = 0.0.0-experimental-<sha>-<date>, peer = that EXACT
+#                   string. Internals change per commit, so the peer must be
+#                   exact — a wider range would let a consumer pair this
+#                   transport with a different experimental React and crash on
+#                   the ReactSharedInternals/"older version of React" mismatch.
+#                   sha  = `git rev-parse HEAD`, first 8 chars
+#                   date = committer date YYYYMMDD in the commit's own tz (matches
+#                          facebook/react build-all-release-channels.js, NOT UTC)
+#                   Patch by republishing with a trailing `.N`.
 #
 # We are still cd'd into the React checkout here, so git reads its HEAD.
 RSL_SHA=$(git rev-parse HEAD | cut -c1-8)
@@ -196,18 +195,11 @@ RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
   const reactFull = RSL_REACT;                                    // vendored React, e.g. 19.2.7
   let peer;
   if (RSL_CHANNEL === "experimental") {
-    pkg.version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;    // snapshot, derived
-    peer = pkg.version;                                           // exact pin
+    pkg.version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;    // === transport version
+    peer = pkg.version;                                           // EXACT pin (internals per-sha)
   } else {
-    // stable: keep rsl-owned version; peer floors at the vendored React,
-    // capped at the next minor.
-    const [maj, min] = reactFull.split(".");
-    const [omaj, omin] = String(pkg.version).split(".");
-    if (`${omaj}.${omin}` !== `${maj}.${min}`) {
-      console.warn(`WARNING: react-server-loader ${pkg.version} major.minor != React ${maj}.${min}. ` +
-        `Bump package.json to ${maj}.${min}.0 (new React minor) before publishing.`);
-    }
-    peer = `>=${reactFull} <${maj}.${Number(min) + 1}.0`;
+    pkg.version = reactFull;                                      // === transport/React version
+    peer = `^${reactFull}`;                                       // React stable transport convention
   }
   pkg.peerDependencies = { ...pkg.peerDependencies, react: peer, "react-dom": peer };
   fs.writeFileSync(RSL_OWN_PKG, JSON.stringify(pkg, null, 2) + "\n");
@@ -218,12 +210,11 @@ VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo
 
 echo ""
 echo "==> Done. Vendored react-server-dom-esm: $REACT_VERSION (channel $CHANNEL)"
-echo "    react-server-loader will publish as: $VERSION"
+echo "    react-server-loader will publish as: $VERSION  (=== transport version)"
 echo "    Output: $VENDOR_DIR/react-server-dom-esm/"
 echo ""
 echo "package.json now carries the publish-ready version + peer. Next:"
 echo "  npm run verify   # gate against a real consumer"
 echo "  npm pack && npm publish <tgz> --tag $([ "$CHANNEL" = experimental ] && echo experimental || echo latest)"
-if [ "$CHANNEL" = "experimental" ]; then
-  echo "  (experimental bumps package.json's version — git checkout package.json after publishing)"
-fi
+echo "  (build-rsl.sh sets package.json's version to the transport's; for a"
+echo "   throwaway local build, git checkout package.json afterwards.)"
