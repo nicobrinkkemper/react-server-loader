@@ -21,18 +21,29 @@ transport from source.
 
 ## Install
 
+`react-server-loader` ships two trains, one per React release channel.
+Pick the one matching the React you build against — the versions line up
+so the install "just works" and the peer-dep checker flags any skew.
+
+**Stable React 19** (the `latest` tag):
+
 ```bash
-npm install react-server-loader
+npm install react-server-loader react react-dom
 ```
 
-You'll also need a matching `react` and `react-dom`:
+**Experimental React** (the `experimental` tag — newest RSC features):
 
 ```bash
-npm install react react-dom
+npm install react-server-loader@experimental react@experimental react-dom@experimental
 ```
+
+Either way you need a React **19+** build with React Server Components
+support; the `react`/`react-dom` peer range is pinned to the exact React
+the package was vendored against, so `npm install` rejects a mismatch.
 
 `react-server-loader`'s version tracks React's exactly — install the
-`react-server-loader@<your-react-version>` train.
+`react-server-loader@<your-react-version>` train, or just use the
+`@latest` / `@experimental` dist-tags above.
 
 ## Use it
 
@@ -121,15 +132,19 @@ createReactLoader({
 
 `react-server-loader` versions track React's:
 
-| React | `react-server-loader` |
-| --- | --- |
-| `19.0.0` (stable) | `react-server-loader@19.0.0` |
-| `19.x.y` (stable) | `react-server-loader@19.x.y` |
-| `0.0.0-experimental-<sha>-<date>` | `react-server-loader@0.0.0-experimental-<sha>-<date>` |
+| React | `react-server-loader` | npm dist-tag |
+| --- | --- | --- |
+| `19.0.0` (stable) | `react-server-loader@19.0.0` | `latest` |
+| `19.x.y` (stable) | `react-server-loader@19.x.y` | `latest` |
+| `0.0.0-experimental-<sha>-<date>` | `react-server-loader@0.0.0-experimental-<sha>-<date>` | `experimental` |
 
-Install matching versions for `react`, `react-dom`, and
-`react-server-loader` and the peer-dep checker will catch skew at
-install time.
+Each published version pins its `react`/`react-dom` **peerDependencies**
+to the exact React build it vendored `react-server-dom-esm` from, so
+installing matching versions for `react`, `react-dom`, and
+`react-server-loader` is enough — the peer-dep checker catches skew at
+install time. Stable builds publish under the `latest` dist-tag and
+experimental builds under `experimental`, so the two trains never move
+each other's tag.
 
 ## Building a release
 

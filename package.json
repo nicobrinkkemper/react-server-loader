@@ -5,6 +5,25 @@
   "type": "module",
   "license": "MIT",
   "author": "Nico Brinkkemper",
+  "keywords": [
+    "react",
+    "rsc",
+    "react-server-components",
+    "server-components",
+    "esm",
+    "loader",
+    "transformer",
+    "directives",
+    "react-server-dom-esm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nicobrinkkemper/react-server-loader.git"
+  },
+  "homepage": "https://github.com/nicobrinkkemper/react-server-loader#readme",
+  "bugs": {
+    "url": "https://github.com/nicobrinkkemper/react-server-loader/issues"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -45,12 +64,19 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "echo 'no tests yet' && exit 0",
+    "test": "vitest --run",
     "build:vendor": "bash scripts/build-rsl.sh",
     "build:vendor:stable": "bash scripts/build-rsl.sh --channel stable"
   },
   "engines": {
     "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "dependencies": {
     "acorn": "^8.16.0",
