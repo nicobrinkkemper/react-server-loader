@@ -64,6 +64,16 @@ throw new Error(
 );
 `;
 
+// ESM re-export of the server surface, for hosts that import the transport as
+// ESM (a Vite/ESM environment) rather than via the CJS conditional shim. Thin
+// wrapper over the root `server.node.js` shim — same exports, ESM shape.
+const ESM_SERVER = `import mod from "../server.node.js";
+export const {
+${SERVER_EXPORTS.map((e) => `  ${e},`).join("\n")}
+} = mod;
+export default mod;
+`;
+
 const SHIMS = {
   "index.js": `'use strict';
 
@@ -79,6 +89,9 @@ module.exports = require('./client.browser');
   "server.node.js": NAMED_SERVER("server.node"),
   "static.js": THROW_NOT_RSC,
   "static.node.js": NAMED_SERVER("server.node"),
+  // ESM server entries, for importing the transport as ESM.
+  "esm/react-server-dom-esm-server.node.js": ESM_SERVER,
+  "esm/react-server-dom-esm-server.js": ESM_SERVER,
 };
 
 for (const [name, contents] of Object.entries(SHIMS)) {
