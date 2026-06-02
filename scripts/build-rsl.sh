@@ -155,22 +155,32 @@ for f in LICENSE README.md; do
 done
 node "$SCRIPT_DIR/generate-shims.mjs"
 
+REACT_VERSION=$(node -p "require('$VENDOR_DIR/react-server-dom-esm/package.json').version" 2>/dev/null || echo "unknown")
+
 echo ""
-echo "==> Stamping vendored transport version + peer deps for channel '$CHANNEL' ..."
-# Two versioning schemes, one per channel (see README "Versioning"):
+echo "==> Stamping react-server-loader/package.json for channel '$CHANNEL' ..."
+# rsl's OWN package.json is the single source of truth for what gets
+# published — version and react/react-dom peer. The build derives the peer
+# (and, for experimental, the version) from the React it just vendored, so
+# a local `npm pack && npm publish` is correct with no extra steps. The
+# vendored transport's own package.json is left exactly as React shipped it.
+#
+# Two schemes, one per channel (see README "Versioning"):
 #
 # experimental — snapshot of one React build, mirroring React's own format
 #   (facebook/react scripts/rollup/build-all-release-channels.js):
 #     sha     = `git rev-parse HEAD`, first 8 chars
 #     date    = committer date of that sha, YYYYMMDD, in the commit's own
 #               timezone (NOT UTC — matches React's --date=format:%Y%m%d)
-#     version = 0.0.0-experimental-<sha>-<date>  (exact react/react-dom peer)
-#   Patch an experimental build by republishing with a trailing `.N`.
+#     version = 0.0.0-experimental-<sha>-<date>, react/react-dom peer = that exact string.
+#   Patch by republishing with a trailing `.N`. (Don't commit this version
+#   bump — it's a per-build snapshot; `git checkout package.json` after.)
 #
 # stable — @types-style: major.minor tracks React, the PATCH is rsl's own
-#   revision (kept in react-server-loader's package.json, maintainer-bumped),
-#   so rsl can ship a fix without waiting for a new React release.
-#     version = react-server-loader's own version (e.g. 19.2.0, 19.2.1, …)
+#   revision (maintainer-bumped in package.json), so rsl can ship a fix
+#   without waiting for a new React release. The build leaves the version
+#   alone and only sets the peer floor.
+#     version = react-server-loader's own (e.g. 19.2.0, 19.2.1, …)
 #     peer    = ">=<vendored React> <next React minor>"  (e.g. >=19.2.7 <19.3.0)
 #
 # We are still cd'd into the React checkout here, so git reads its HEAD.
@@ -179,42 +189,41 @@ RSL_DATE=$(git show -s --no-show-signature --format=%cd --date=format:%Y%m%d "$R
 RSL_DATE=${RSL_DATE#\'}            # strip CI quote-wrapping ('...' )
 RSL_DATE=${RSL_DATE%\'}
 RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
-  RSL_PKG="$VENDOR_DIR/react-server-dom-esm/package.json" \
-  RSL_OWN_PKG="$PKG_DIR/package.json" node -e '
+  RSL_REACT="$REACT_VERSION" RSL_OWN_PKG="$PKG_DIR/package.json" node -e '
   const fs = require("fs");
-  const { RSL_PKG, RSL_OWN_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE } = process.env;
-  const pkg = JSON.parse(fs.readFileSync(RSL_PKG, "utf8"));      // vendored transport
-  const reactFull = pkg.version;                                 // e.g. 19.2.7
-  let version, peer;
+  const { RSL_OWN_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE, RSL_REACT } = process.env;
+  const pkg = JSON.parse(fs.readFileSync(RSL_OWN_PKG, "utf8"));   // rsl itself
+  const reactFull = RSL_REACT;                                    // vendored React, e.g. 19.2.7
+  let peer;
   if (RSL_CHANNEL === "experimental") {
-    version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;
-    peer = version;            // exact pin, as react@experimental publishes
+    pkg.version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;    // snapshot, derived
+    peer = pkg.version;                                           // exact pin
   } else {
-    // stable: rsl owns the version (its patch slot); peer floors at the
-    // vendored React and is capped at the next minor.
+    // stable: keep rsl-owned version; peer floors at the vendored React,
+    // capped at the next minor.
     const [maj, min] = reactFull.split(".");
-    const own = JSON.parse(fs.readFileSync(RSL_OWN_PKG, "utf8"));
-    version = own.version;                                       // rsl-managed
-    const [omaj, omin] = String(version).split(".");
+    const [omaj, omin] = String(pkg.version).split(".");
     if (`${omaj}.${omin}` !== `${maj}.${min}`) {
-      console.warn(`WARNING: react-server-loader ${version} major.minor != React ${maj}.${min}. ` +
+      console.warn(`WARNING: react-server-loader ${pkg.version} major.minor != React ${maj}.${min}. ` +
         `Bump package.json to ${maj}.${min}.0 (new React minor) before publishing.`);
     }
     peer = `>=${reactFull} <${maj}.${Number(min) + 1}.0`;
   }
-  pkg.version = version;
   pkg.peerDependencies = { ...pkg.peerDependencies, react: peer, "react-dom": peer };
-  fs.writeFileSync(RSL_PKG, JSON.stringify(pkg, null, 2) + "\n");
-  console.log(`stamped: version=${version} peer.react=${peer}`);
+  fs.writeFileSync(RSL_OWN_PKG, JSON.stringify(pkg, null, 2) + "\n");
+  console.log(`stamped react-server-loader: version=${pkg.version} peer.react=${peer}`);
 '
 
-VERSION=$(node -p "require('$VENDOR_DIR/react-server-dom-esm/package.json').version" 2>/dev/null || echo "unknown")
+VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo "unknown")
 
 echo ""
-echo "==> Done. react-server-dom-esm version: $VERSION"
-echo "    Output:   $VENDOR_DIR/react-server-dom-esm/"
-echo "    Channel:  $CHANNEL"
+echo "==> Done. Vendored react-server-dom-esm: $REACT_VERSION (channel $CHANNEL)"
+echo "    react-server-loader will publish as: $VERSION"
+echo "    Output: $VENDOR_DIR/react-server-dom-esm/"
 echo ""
-echo "The vendored transport package.json now carries the channel-correct"
-echo "version + react/react-dom peer range; the publish workflow mirrors"
-echo "both into react-server-loader's package.json before packing."
+echo "package.json now carries the publish-ready version + peer. Next:"
+echo "  npm run verify   # gate against a real consumer"
+echo "  npm pack && npm publish <tgz> --tag $([ "$CHANNEL" = experimental ] && echo experimental || echo latest)"
+if [ "$CHANNEL" = "experimental" ]; then
+  echo "  (experimental bumps package.json's version — git checkout package.json after publishing)"
+fi

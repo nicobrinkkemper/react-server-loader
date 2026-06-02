@@ -63,30 +63,14 @@ jobs:
             --channel "${{ inputs.channel }}" \
             --react-ref "${{ inputs.react_ref }}"
 
-      - name: Sync version + peer deps to the vendored react-server-dom-esm
+      - name: Read publish version
         id: version
         run: |
-          # rsl's version and react/react-dom peer range mirror the vendored
-          # transport exactly, so each train (stable / experimental) ships a
-          # peer range that matches the React build it was vendored against.
-          # Stable -> react ^19.x; experimental -> the 0.0.0-experimental-<sha>
-          # build, whose transport pins the matching experimental react.
-          VERSION=$(node -p "require('./vendor/react-server-dom-esm/package.json').version")
-          echo "react-server-dom-esm version: $VERSION"
-          node -e '
-            const fs = require("fs");
-            const transport = require("./vendor/react-server-dom-esm/package.json");
-            const pkg = require("./package.json");
-            const peers = transport.peerDependencies || {};
-            pkg.peerDependencies = {
-              ...pkg.peerDependencies,
-              react: peers.react || pkg.peerDependencies?.react,
-              "react-dom": peers["react-dom"] || pkg.peerDependencies?.["react-dom"],
-            };
-            fs.writeFileSync("./package.json", JSON.stringify(pkg, null, 2) + "\n");
-            console.log("synced peerDependencies:", JSON.stringify(pkg.peerDependencies));
-          '
-          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          # build-rsl.sh already stamped package.json (version + peer) for the
+          # channel — it's the single source of truth. Just read it back for
+          # the artifact name and summary.
+          VERSION=$(node -p "require('./package.json').version")
+          echo "react-server-loader version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Resolve npm dist-tag from channel
