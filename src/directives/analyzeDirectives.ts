@@ -75,16 +75,18 @@ export function analyzeDirectives(
     "logger" in optionsOrMatches
       ? optionsOrMatches.logger ?? _logger ?? NULL_LOGGER
       : _logger ?? NULL_LOGGER;
-  // Check if this looks like Vite-injected code
-  // During build, Vite may prepend imports (e.g., __vitePreload for dynamic imports)
-  // before "use client"/"use server" directives
-  const isViteInjectedCode =
-    source.includes("__vite__createHotContext") ||
-    source.includes("import.meta.hot") ||
-    source.includes("import.meta.env") ||
-    source.includes("/@vite/client") ||
-    source.includes("__vitePreload") ||
-    source.includes("\0vite/");
+  // A host may legitimately prepend code before a file-level directive (a
+  // bundler injecting imports, an HMR runtime, …), which would otherwise trip
+  // the "directive must be at the top" warning. The host owns that policy via
+  // the `tolerateLeadingCode` predicate; rsl itself makes no bundler-specific
+  // assumptions. Default: strict (no tolerance).
+  const tolerateLeadingCode =
+    hasOptions &&
+    typeof optionsOrMatches === "object" &&
+    "tolerateLeadingCode" in optionsOrMatches &&
+    typeof optionsOrMatches.tolerateLeadingCode === "function"
+      ? optionsOrMatches.tolerateLeadingCode(source)
+      : false;
 
   for (const node of ast.body) {
     // Debug logging
@@ -248,8 +250,9 @@ beforeNode: ${node.start! > 0 ? JSON.stringify(source.slice(0, node.start!)).sli
       }
     }
 
-    // Only warn about directive placement if it's not Vite-injected code
-    if (foundNonDirective && !isViteInjectedCode) {
+    // Only warn about directive placement when the host hasn't said leading
+    // code is expected (see `tolerateLeadingCode`).
+    if (foundNonDirective && !tolerateLeadingCode) {
       directiveInfo.warnings.push({
         message:
           "File-level directives must be at the top of the file, before any other code",

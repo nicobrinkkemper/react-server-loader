@@ -46,6 +46,15 @@ export interface DirectiveOptions {
     parse?: ParseFn;
     getDirectiveType?: GetDirectiveTypeFn;
   };
+  /**
+   * Host-supplied predicate. Given the module source, return `true` when
+   * leading code *before* a file-level directive is expected — e.g. a bundler
+   * that prepends imports — so the "directive must be at the top" warning is
+   * suppressed. Defaults to strict (no tolerance): rsl ships no
+   * bundler-specific assumptions, so the host owns this policy. (A Vite host,
+   * for instance, passes a predicate that looks for `__vitePreload` etc.)
+   */
+  tolerateLeadingCode?: (source: string) => boolean;
 }
 
 /** No-op logger — silences output unless the caller wires one in. */
