@@ -155,6 +155,39 @@ for f in LICENSE README.md; do
 done
 node "$SCRIPT_DIR/generate-shims.mjs"
 
+echo ""
+echo "==> Stamping vendored transport version + peer deps for channel '$CHANNEL' ..."
+# Mirror React's own release versioning verbatim
+# (facebook/react scripts/rollup/build-all-release-channels.js):
+#   sha   = `git rev-parse HEAD`, first 8 chars
+#   date  = committer date of that sha, YYYYMMDD, in the commit's own
+#           timezone (NOT UTC — matches React's --date=format:%Y%m%d)
+#   stable       -> version <ReactVersion>,                  peer react "^<ReactVersion>"
+#   experimental -> version 0.0.0-experimental-<sha>-<date>, peer react "<that exact string>"
+# We are still cd'd into the React checkout here, so git reads its HEAD.
+RSL_SHA=$(git rev-parse HEAD | cut -c1-8)
+RSL_DATE=$(git show -s --no-show-signature --format=%cd --date=format:%Y%m%d "$RSL_SHA")
+RSL_DATE=${RSL_DATE#\'}            # strip CI quote-wrapping ('...' )
+RSL_DATE=${RSL_DATE%\'}
+RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
+  RSL_PKG="$VENDOR_DIR/react-server-dom-esm/package.json" node -e '
+  const fs = require("fs");
+  const { RSL_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE } = process.env;
+  const pkg = JSON.parse(fs.readFileSync(RSL_PKG, "utf8"));
+  let version, peer;
+  if (RSL_CHANNEL === "experimental") {
+    version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;
+    peer = version;            // exact pin, as react@experimental publishes
+  } else {
+    version = pkg.version;     // React stable version, e.g. 19.2.7
+    peer = `^${version}`;      // caret on the full version, as React publishes
+  }
+  pkg.version = version;
+  pkg.peerDependencies = { ...pkg.peerDependencies, react: peer, "react-dom": peer };
+  fs.writeFileSync(RSL_PKG, JSON.stringify(pkg, null, 2) + "\n");
+  console.log(`stamped: version=${version} peer.react=${peer}`);
+'
+
 VERSION=$(node -p "require('$VENDOR_DIR/react-server-dom-esm/package.json').version" 2>/dev/null || echo "unknown")
 
 echo ""
@@ -162,4 +195,6 @@ echo "==> Done. react-server-dom-esm version: $VERSION"
 echo "    Output:   $VENDOR_DIR/react-server-dom-esm/"
 echo "    Channel:  $CHANNEL"
 echo ""
-echo "Next: update package.json version to match React, then publish."
+echo "The vendored transport package.json now carries the channel-correct"
+echo "version + react/react-dom peer range; the publish workflow mirrors"
+echo "both into react-server-loader's package.json before packing."

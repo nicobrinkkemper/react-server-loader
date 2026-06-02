@@ -38,8 +38,26 @@ npm install react-server-loader@experimental react@experimental react-dom@experi
 ```
 
 Either way you need a React **19+** build with React Server Components
-support; the `react`/`react-dom` peer range is pinned to the exact React
-the package was vendored against, so `npm install` rejects a mismatch.
+support. The package follows React's own transport conventions (the same
+ones `react-server-dom-webpack` / `react-server-dom-parcel` publish):
+
+- **stable** → version `19.x.y`, `react`/`react-dom` peer `^19.x.y`
+- **experimental** → version `0.0.0-experimental-<sha>-<date>`,
+  `react`/`react-dom` peer pinned to that **exact** string
+
+So on the stable train any matching React 19.x satisfies the peer and the
+install just works. The experimental train is stricter: its peer names the
+**exact** `0.0.0-experimental-<sha>-<date>` it was vendored from, so you
+must install that same React build — check which one with:
+
+```bash
+npm view react-server-loader@experimental peerDependencies
+npm install react@<that-exact-version> react-dom@<that-exact-version>
+```
+
+The `react@experimental` dist-tag moves daily, so it only lines up with
+`react-server-loader@experimental` when the two are published in lockstep
+(see the release notes below). When in doubt, pin the exact version.
 
 `react-server-loader`'s version tracks React's exactly — install the
 `react-server-loader@<your-react-version>` train, or just use the
