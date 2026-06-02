@@ -29,6 +29,12 @@ if (process.env.NODE_ENV === 'production') {
 
 const SERVER_EXPORTS = [
   "renderToPipeableStream",
+  // Static prerender. Stable React exposes `prerenderToNodeStream`; the
+  // experimental channel still uses `unstable_prerenderToNodeStream`. Surface
+  // both — each build provides whichever it has (the other is undefined), so a
+  // consumer can `prerenderToNodeStream ?? unstable_prerenderToNodeStream`.
+  "prerenderToNodeStream",
+  "unstable_prerenderToNodeStream",
   "decodeReplyFromBusboy",
   "decodeReply",
   "decodeAction",
