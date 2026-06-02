@@ -183,12 +183,27 @@ writes the publishable shim entry points. Typical local invocation:
 ```
 
 The build script needs `yarn`, `node >= 22`, and `java` (React's build
-runs Closure Compiler).
+runs Closure Compiler). It stamps the vendored transport's `package.json`
+with the channel-correct version and `react`/`react-dom` peer range
+(see *Versioning* above).
 
-For releases, the `.github/workflows/publish.yml` workflow runs the
-same pipeline on a fresh checkout and packs the tarball (or publishes
-it, when dispatched with `dry_run: false` and the `NPM_TOKEN` secret
-set on the repo).
+**Publishing is done locally — no npm token ever lives on GitHub.** The
+`.github/workflows/publish.yml` workflow ("Build + pack") runs the same
+pipeline on a clean checkout and uploads the packed tarball as an
+artifact; it never publishes. To cut a release, build (locally or via the
+workflow), then publish that tarball from your own machine:
+
+```bash
+# build locally...
+./scripts/build-rsl.sh --channel stable --react-ref v19.2.7
+npm pack
+# ...or download the workflow's artifact instead, then:
+npm publish ./react-server-loader-<version>.tgz --access public --tag <latest|experimental>
+```
+
+Use `--tag experimental` for the experimental train so it never moves
+`latest`. The workflow's run Summary prints the exact command for the
+version it built.
 
 ## Status
 

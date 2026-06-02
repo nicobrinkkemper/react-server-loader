@@ -1,13 +1,14 @@
-name: Build + publish
+name: Build + pack
 
-# Runs the build-rsl.sh pipeline against a given React ref and publishes
-# the resulting package. Triggered manually so the maintainer chooses
-# which React tag becomes a react-server-loader release.
+# Runs the build-rsl.sh pipeline against a given React ref and packs the
+# resulting package into an inspectable tarball artifact. Triggered
+# manually so the maintainer chooses which React tag becomes a
+# react-server-loader release.
 #
-# Dry-run by default: the job builds, packs, and uploads the tarball as
-# a workflow artifact for inspection. Set `dry_run: false` on dispatch
-# to actually `npm publish` (requires the NPM_TOKEN secret to be set
-# on the repo).
+# This workflow NEVER publishes and holds no npm credentials. Publishing
+# is done locally from the maintainer's machine (`npm publish <tgz>`),
+# so a long-lived npm token never lives on GitHub. Download the artifact
+# this job uploads and publish that exact tarball — see the run Summary.
 
 on:
   workflow_dispatch:
@@ -25,14 +26,9 @@ on:
         options:
           - experimental
           - stable
-      dry_run:
-        description: "Pack-only (no publish). Untick to publish to npm."
-        type: boolean
-        required: true
-        default: true
 
 jobs:
-  build-and-publish:
+  build-and-pack:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout react-server-loader
@@ -42,7 +38,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Install Java (Google Closure Compiler — used by React's build)
         uses: actions/setup-java@v5
@@ -97,8 +92,10 @@ jobs:
       - name: Resolve npm dist-tag from channel
         id: tag
         run: |
-          # Experimental builds publish under the `experimental` dist-tag so
-          # they never move `latest`. Stable builds take `latest`.
+          # Experimental builds belong under the `experimental` dist-tag so
+          # they never move `latest`. Stable builds take `latest`. This is
+          # informational only — the maintainer applies it at `npm publish`
+          # time locally (this workflow never publishes).
           if [ "${{ inputs.channel }}" = "experimental" ]; then
             echo "tag=experimental" >> "$GITHUB_OUTPUT"
           else
@@ -115,19 +112,20 @@ jobs:
           path: react-server-loader-*.tgz
           retention-days: 30
 
-      - name: Publish to npm
-        if: ${{ inputs.dry_run == false }}
-        run: npm publish react-server-loader-*.tgz --access public --tag "${{ steps.tag.outputs.tag }}"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
       - name: Summary
         run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.tag.outputs.tag }}"
           echo "### Build summary" >> "$GITHUB_STEP_SUMMARY"
           echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
           echo "| --- | --- |" >> "$GITHUB_STEP_SUMMARY"
           echo "| React ref | \`${{ inputs.react_ref }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Channel | ${{ inputs.channel }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| react-server-dom-esm version | ${{ steps.version.outputs.version }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| npm dist-tag | ${{ steps.tag.outputs.tag }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Mode | ${{ inputs.dry_run == true && 'dry-run (artifact only)' || 'published' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Version | $VERSION |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| npm dist-tag | $TAG |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Publish locally (no npm token lives on GitHub):" >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "gh run download ${{ github.run_id }} -R ${{ github.repository }} -D ./rsl-pub" >> "$GITHUB_STEP_SUMMARY"
+          echo "npm publish ./rsl-pub/react-server-loader-$VERSION/react-server-loader-$VERSION.tgz --access public --tag $TAG" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
