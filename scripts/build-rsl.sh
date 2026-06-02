@@ -95,10 +95,23 @@ else
   echo "    Commit: $(cd "$REACT_DIR" && git rev-parse --short HEAD)"
 fi
 
-if [[ "$REACT_REF" != "main" ]]; then
-  (cd "$REACT_DIR" && git fetch --depth 1 origin "$REACT_REF" 2>/dev/null && git checkout "$REACT_REF" 2>/dev/null) \
-    || echo "    (could not check out $REACT_REF — building against current HEAD)"
-fi
+# Always check out the requested ref — including `main` — and FAIL hard if we
+# can't. Silently building the current HEAD would publish a transport from the
+# wrong React (e.g. a stale tag), which for a release is unacceptable.
+echo "==> Checking out React ref '$REACT_REF' ..."
+(
+  cd "$REACT_DIR"
+  git fetch --depth 1 origin "$REACT_REF" 2>/dev/null || true
+  git checkout "$REACT_REF" 2>/dev/null \
+    || git checkout "origin/$REACT_REF" 2>/dev/null \
+    || git checkout FETCH_HEAD 2>/dev/null
+) || {
+  echo "ERROR: could not check out React ref '$REACT_REF' in $REACT_DIR." >&2
+  echo "       Fetch it first (cd $REACT_DIR && git fetch origin $REACT_REF)" >&2
+  echo "       or pass --react-ref <an available tag/branch/sha>." >&2
+  exit 1
+}
+echo "    React now at: $(cd "$REACT_DIR" && git rev-parse --short HEAD) ($(cd "$REACT_DIR" && git describe --tags --always 2>/dev/null))"
 
 echo ""
 echo "==> Installing React's build dependencies (yarn) ..."
@@ -188,14 +201,15 @@ RSL_DATE=$(git show -s --no-show-signature --format=%cd --date=format:%Y%m%d "$R
 RSL_DATE=${RSL_DATE#\'}            # strip CI quote-wrapping ('...' )
 RSL_DATE=${RSL_DATE%\'}
 RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
-  RSL_REACT="$REACT_VERSION" RSL_OWN_PKG="$PKG_DIR/package.json" node -e '
+  RSL_REACT="$REACT_VERSION" RSL_OWN_PKG="$PKG_DIR/package.json" \
+  RSL_VENDOR_PKG="$VENDOR_DIR/react-server-dom-esm/package.json" node -e '
   const fs = require("fs");
-  const { RSL_OWN_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE, RSL_REACT } = process.env;
+  const { RSL_OWN_PKG, RSL_VENDOR_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE, RSL_REACT } = process.env;
   const pkg = JSON.parse(fs.readFileSync(RSL_OWN_PKG, "utf8"));   // rsl itself
-  const reactFull = RSL_REACT;                                    // vendored React, e.g. 19.2.7
+  const reactFull = RSL_REACT;                                    // vendored React in-repo version, e.g. 19.2.7
   let peer;
   if (RSL_CHANNEL === "experimental") {
-    pkg.version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;    // === transport version
+    pkg.version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;    // synthesized (React publish convention)
     peer = pkg.version;                                           // EXACT pin (internals per-sha)
   } else {
     pkg.version = reactFull;                                      // === transport/React version
@@ -203,6 +217,13 @@ RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
   }
   pkg.peerDependencies = { ...pkg.peerDependencies, react: peer, "react-dom": peer };
   fs.writeFileSync(RSL_OWN_PKG, JSON.stringify(pkg, null, 2) + "\n");
+  // Keep the vendored transport package.json version in lockstep with rsl, so
+  // the two are consistent (and the publish guard can assert version === vendor).
+  // For stable this is a no-op (both = React version); for experimental it sets
+  // the transport to the same 0.0.0-experimental-<sha> string.
+  const vpkg = JSON.parse(fs.readFileSync(RSL_VENDOR_PKG, "utf8"));
+  vpkg.version = pkg.version;
+  fs.writeFileSync(RSL_VENDOR_PKG, JSON.stringify(vpkg, null, 2) + "\n");
   console.log(`stamped react-server-loader: version=${pkg.version} peer.react=${peer}`);
 '
 

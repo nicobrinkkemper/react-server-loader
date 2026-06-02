@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Cut a react-server-loader release, locally and reproducibly:
-#   1. build + vendor the react-server-dom-esm transport (and stamp version+peer)
-#   2. pack the tarball (prepack rebuilds dist; prepublishOnly guards state)
-#   3. gate it against the consumer (scripts/verify-release.sh)
-#   4. npm publish the exact tarball
+# Cut a react-server-loader release, locally and reproducibly. Per train:
+#   1. build + vendor the react-server-dom-esm transport (stamp version+peer)
+#   2. guard the state (check-publishable.mjs) + pack (prepack rebuilds dist)
+#   3. gate the tarball against the consumer (verify-release.sh)
+#   4. npm publish the exact tarball under the train's dist-tag
 #
 # No npm token ever lives on GitHub — this runs on the maintainer's machine
 # under their own `npm login`.
@@ -14,7 +14,14 @@ set -euo pipefail
 #   npm run release                                  # stable, React v<package.json version>
 #   ./scripts/release.sh --react-ref v19.2.8         # stable, bump to React 19.2.8
 #   ./scripts/release.sh --channel experimental      # experimental train (React main)
-#   ./scripts/release.sh --dry-run                   # build + gate + pack, do NOT publish
+#   ./scripts/release.sh --both                      # experimental THEN stable, one command
+#   ./scripts/release.sh --both --stable-ref v19.2.7 --experimental-ref main
+#   ./scripts/release.sh --dry-run                   # build + guard + gate + pack, no publish
+#
+# --both runs experimental first, stable last, so package.json ends stamped at
+# the stable version (clean tree). The two are separate versions (19.2.7 vs
+# 0.0.0-experimental-<sha>) under separate dist-tags (latest / experimental) —
+# they coexist on npm; this just publishes both back to back.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PKG_DIR="$(dirname "$SCRIPT_DIR")"
@@ -22,19 +29,69 @@ cd "$PKG_DIR"
 
 CHANNEL="stable"
 REACT_REF=""
+BOTH="false"
+STABLE_REF=""
+EXPERIMENTAL_REF=""
 DRY_RUN="false"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --channel)   CHANNEL="$2"; shift 2 ;;
-    --react-ref) REACT_REF="$2"; shift 2 ;;
-    --dry-run)   DRY_RUN="true"; shift ;;
-    -h|--help)   sed -n '3,21p' "$0"; exit 0 ;;
+    --channel)          CHANNEL="$2"; shift 2 ;;
+    --react-ref)        REACT_REF="$2"; shift 2 ;;
+    --both)             BOTH="true"; shift ;;
+    --stable-ref)       STABLE_REF="$2"; shift 2 ;;
+    --experimental-ref) EXPERIMENTAL_REF="$2"; shift 2 ;;
+    --dry-run)          DRY_RUN="true"; shift ;;
+    -h|--help)          sed -n '4,25p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
-# Defaults: stable rebuilds the React version already stamped (version===transport);
-# experimental tracks React main. The dist-tag follows the channel.
+# Release one train: channel, React ref, npm dist-tag.
+release_one() {
+  local channel="$1" ref="$2" tag="$3"
+  echo ""
+  echo "==> Train: channel=$channel  react-ref=$ref  dist-tag=$tag"
+  echo "==> [1/4] Building + vendoring the transport ..."
+  bash "$SCRIPT_DIR/build-rsl.sh" --channel "$channel" --react-ref "$ref"
+
+  echo "==> [2/4] Guard + pack ..."
+  node "$SCRIPT_DIR/check-publishable.mjs"
+  npm pack >/dev/null
+  local tgz version
+  tgz="$(ls -t "$PKG_DIR"/react-server-loader-*.tgz | head -1)"
+  version="$(node -p "require('./package.json').version")"
+  echo "    packed: $tgz"
+
+  echo "==> [3/4] Gating against the consumer ..."
+  bash "$SCRIPT_DIR/verify-release.sh" --tarball "$tgz"
+
+  if [ "$DRY_RUN" = "true" ]; then
+    echo "==> DRY RUN — built, guarded, gated, packed react-server-loader@$version ($tag). Not published."
+    rm -f "$tgz"
+    return 0
+  fi
+
+  echo "==> [4/4] Publishing react-server-loader@$version (tag $tag) ..."
+  npm publish "$tgz" --access public --tag "$tag"
+  rm -f "$tgz"
+  echo "==> Published react-server-loader@$version @ $tag"
+}
+
+if [ "$BOTH" = "true" ]; then
+  # Capture the stable version BEFORE the experimental build mutates package.json.
+  STABLE_VERSION="$(node -p "require('./package.json').version")"
+  EXP_REF="${EXPERIMENTAL_REF:-main}"
+  STB_REF="${STABLE_REF:-v$STABLE_VERSION}"
+  echo "==> Releasing BOTH trains: experimental ($EXP_REF) then stable ($STB_REF)."
+  # Experimental first; stable last re-stamps package.json back to $STABLE_VERSION.
+  release_one experimental "$EXP_REF" experimental
+  release_one stable "$STB_REF" latest
+  echo ""
+  echo "==> Both trains done. package.json restored to stable ($STABLE_VERSION)."
+  exit 0
+fi
+
+# Single train.
 if [ -z "$REACT_REF" ]; then
   if [ "$CHANNEL" = "experimental" ]; then
     REACT_REF="main"
@@ -43,31 +100,7 @@ if [ -z "$REACT_REF" ]; then
   fi
 fi
 TAG=$([ "$CHANNEL" = "experimental" ] && echo "experimental" || echo "latest")
-
-echo "==> Release: channel=$CHANNEL  react-ref=$REACT_REF  dist-tag=$TAG"
-
-echo "==> [1/4] Building + vendoring the transport ..."
-bash "$SCRIPT_DIR/build-rsl.sh" --channel "$CHANNEL" --react-ref "$REACT_REF"
-
-echo "==> [2/4] Guard + pack ..."
-node "$SCRIPT_DIR/check-publishable.mjs"
-npm pack >/dev/null
-TGZ="$(ls -t "$PKG_DIR"/react-server-loader-*.tgz | head -1)"
-VERSION="$(node -p "require('./package.json').version")"
-echo "    packed: $TGZ"
-
-echo "==> [3/4] Gating against the consumer ..."
-bash "$SCRIPT_DIR/verify-release.sh" --tarball "$TGZ"
-
-if [ "$DRY_RUN" = "true" ]; then
-  echo ""
-  echo "==> DRY RUN — built, guarded, gated, and packed react-server-loader@$VERSION."
-  echo "    Tarball left at: $TGZ  (not published)."
-  exit 0
+release_one "$CHANNEL" "$REACT_REF" "$TAG"
+if [ "$CHANNEL" = "experimental" ] && [ "$DRY_RUN" = "false" ]; then
+  echo "    Experimental stamped package.json — run: git checkout package.json"
 fi
-
-echo "==> [4/4] Publishing react-server-loader@$VERSION to npm (tag $TAG) ..."
-npm publish "$TGZ" --access public --tag "$TAG"
-rm -f "$TGZ"
-echo "==> Published react-server-loader@$VERSION @ $TAG"
-echo "    For experimental snapshots, run: git checkout package.json"
