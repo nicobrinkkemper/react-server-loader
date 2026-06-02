@@ -2,6 +2,11 @@
 
 Loader-side tooling for React Server Components in ESM environments.
 
+> **Scope:** use React, but with a native-ESM workflow in mind. Anything
+> that helps you run React (and RSC) in pure ESM belongs here; shipping a
+> *copy* of React does not — `react`/`react-dom` always come from the
+> consumer.
+
 This package gives a bundler, framework, or canonical Node setup the three
 things it needs to render React Server Components in pure ESM:
 
