@@ -65,6 +65,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest --run",
+    "test:transport": "node --conditions=react-server test/transport-smoke.mjs",
     "build:vendor": "bash scripts/build-rsl.sh",
     "build:vendor:stable": "bash scripts/build-rsl.sh --channel stable",
     "verify": "bash scripts/verify-release.sh"
@@ -86,6 +87,8 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
     "typescript": "^5.5.0",
     "vitest": "^3.2.6"
   }
