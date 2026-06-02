@@ -68,28 +68,54 @@ commit. When in doubt, pin the exact version. Or just use the
 
 ## Use it
 
-### As a Node ESM loader (no bundler)
+`react-server-loader` ships the pieces to run RSC in pure ESM: the
+**transport** (`react-server-dom-esm`, which React doesn't publish), a
+**loader** that transforms `"use client"` / `"use server"` modules on
+import, and the **directive + transformer** primitives those are built on.
+The common path uses the loader and transport together; bundler and
+framework authors reach for the primitives directly.
+
+### Render RSC with no bundler
+
+Two steps — register the loader so directive modules transform on import,
+then render and decode with the transport.
 
 ```ts
-// register.mjs
+// register.mjs — install the loader
 import { register } from "node:module";
 import { createReactLoader } from "react-server-loader/loader";
 
-const { load, resolve } = createReactLoader({
-  // Where your framework will serve client chunks from. The string this
-  // returns is what ends up inside each emitted `registerClientReference`
-  // call.
+const { load } = createReactLoader({
+  // Maps an on-disk module to the id baked into each emitted
+  // `registerClientReference` — i.e. where the client will fetch it from.
   moduleID: (filePath) => filePath.replace(process.cwd(), ""),
 });
-
 register(load, import.meta.url);
 ```
 
+```tsx
+// server.js — render a server component tree to an RSC stream
+import { renderToPipeableStream } from "react-server-loader/server";
+import App from "./App.js";
+
+const { pipe } = renderToPipeableStream(<App />, "/client/");
+pipe(response); // a Node writable — the RSC payload
+```
+
+```ts
+// client.js — decode the stream back into a React tree
+import { createFromNodeStream } from "react-server-loader/client";
+
+const root = await createFromNodeStream(rscStream, "/client/");
+```
+
 ```bash
+# the server runs under the react-server condition so react and the
+# transport resolve to their server builds
 node --import ./register.mjs --conditions=react-server server.js
 ```
 
-### As transformer primitives (inside a bundler plugin)
+### Inside a bundler plugin — the primitives
 
 ```ts
 import { detectClientModule } from "react-server-loader/directives";
@@ -98,10 +124,7 @@ import { createTransformer } from "react-server-loader/transformer";
 // In your bundler's transform hook:
 if (detectClientModule({ source, moduleId: id })) {
   const transformer = createTransformer({
-    options: {
-      moduleID: yourBundlersHostedPathPolicy,
-      verbose: false,
-    },
+    options: { moduleID: yourHostedPathPolicy },
   });
   return transformer(source, id, hostedID);
 }
@@ -113,22 +136,23 @@ if (detectClientModule({ source, moduleId: id })) {
 import {
   detectClientModule,
   sourceHasTopLevelClientDirective,
-  analyzeDirectives,
 } from "react-server-loader/directives";
 ```
 
-Useful for tooling that wants to identify RSC boundaries without
-committing to a particular transform shape — type-checkers, lint rules,
-build-graph analysers.
+For tooling that only needs to identify RSC boundaries — type-checkers,
+lint rules, build-graph analysers — without committing to a transform.
 
 ## Subpaths
 
 | Subpath | Surface |
 | --- | --- |
-| `react-server-loader` | Top-level re-exports across the whole package. |
-| `react-server-loader/directives` | Directive engine + the AST types it returns. No runtime dependency on the vendored transport. |
-| `react-server-loader/transformer` | Source-to-source transformer primitives + the `DEFAULT_LOADER_CONFIG` defaults. No runtime dependency on the vendored transport. |
-| `react-server-loader/loader` | `createReactLoader` factory returning Node ESM `load` / `resolve` hooks. Loads the vendored transport at runtime. |
+| `react-server-loader/loader` | `createReactLoader` → Node ESM `load` / `resolve` hooks. |
+| `react-server-loader/directives` | Directive engine: `detectClientModule`, `sourceHasTopLevelClientDirective`, `analyzeModule`. Pure analysis, no transport dependency. |
+| `react-server-loader/transformer` | Source-to-source transform: `createTransformer`, `parse`, `transformModule`. |
+| `react-server-loader/server` (`/server.node`) | Vendored transport, server: `renderToPipeableStream`, `registerClientReference`, `decodeReply`, … (needs `--conditions react-server`). |
+| `react-server-loader/client` (`/client.node`, `/client.browser`) | Vendored transport, client: `createFromNodeStream`, `createServerReference`. |
+| `react-server-loader/static` (`/static.node`) | Vendored transport, static entry. (In this React build it re-exports the server surface — `react-server-dom-esm` ships no separate static module.) |
+| `react-server-loader` | Re-exports the headline API (`createReactLoader`, `detectClientModule`, `createTransformer`). |
 
 ## Overriding the contract
 
@@ -231,12 +255,24 @@ Use `--tag experimental` for the experimental train so it never moves
 `latest`. The workflow's run Summary prints the exact command for the
 version it built.
 
-## Status
+## Public API
 
-The package is in active development. Public API is still settling — the
-top-level `createReactLoader` and the `react-server-loader/directives`
-subpath are stable; the `react-server-loader/transformer` surface may
-narrow as the public-facing pieces separate from internal helpers.
+The supported surface is the subpaths documented under *Subpaths* above and
+the symbols named there:
+
+- `react-server-loader/loader` — `createReactLoader`
+- `react-server-loader/directives` — `detectClientModule`,
+  `sourceHasTopLevelClientDirective`, `analyzeModule`
+- `react-server-loader/transformer` — `createTransformer`, `parse`,
+  `transformModule`
+- `react-server-loader/server` · `/client` · `/static` — the vendored
+  `react-server-dom-esm` transport
+- `react-server-loader` — re-exports the headline three (`createReactLoader`,
+  `detectClientModule`, `createTransformer`)
+
+Everything else (AST type-guards, low-level transform helpers) is internal,
+not exported, and may change without a major bump. The transport tracks
+React's RSC API for the version it was built against (see *Versioning*).
 
 ## License
 
