@@ -64,6 +64,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepack": "tsc -p tsconfig.json",
     "test": "vitest --run",
     "test:transport": "node --conditions=react-server test/transport-smoke.mjs",
     "build:vendor": "bash scripts/build-rsl.sh",
