@@ -14,3 +14,12 @@ export {
   type ModuleIDResolver,
   type OnTransformCallback,
 } from "./createReactLoader.js";
+
+// Logging is a first-class option (`verbose` + `logger`) on the loader and
+// the directive/transformer engines. Re-export the contract and the two
+// built-in backends so a consumer can wire their own or silence output.
+export {
+  type Logger,
+  NULL_LOGGER,
+  CONSOLE_LOGGER,
+} from "../directives/options.js";

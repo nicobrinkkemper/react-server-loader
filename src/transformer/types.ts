@@ -52,6 +52,12 @@ export type TransformOptions = {
   mode?: "development" | "production" | "test";
   logger?: Logger;
   moduleBase?: string;
+  /**
+   * Host predicate for tolerating code before a file-level directive (e.g. a
+   * bundler that prepends imports) — suppresses the placement warning. See
+   * `DirectiveOptions.tolerateLeadingCode`. Default: strict (no tolerance).
+   */
+  tolerateLeadingCode?: (source: string) => boolean;
   // moduleID is on .loader.moduleID
   // moduleID?: (moduleId: string) => string;
 };
@@ -71,7 +77,7 @@ export type TransformFunction = (
 
 export type TransformerFactory = (options: {
   parseFn?: ParseFn;
-  options: Pick<TransformOptions, 'verbose' | 'loader' | 'panicThreshold' | 'logger' | 'moduleBase'>;
+  options: Pick<TransformOptions, 'verbose' | 'loader' | 'panicThreshold' | 'logger' | 'moduleBase' | 'tolerateLeadingCode'>;
   forceServerFunction?: boolean | undefined;
   forceClientComponent?: boolean | undefined;
   isServerEnvironment?: boolean;

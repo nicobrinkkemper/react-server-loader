@@ -146,7 +146,7 @@ lint rules, build-graph analysers — without committing to a transform.
 
 | Subpath | Surface |
 | --- | --- |
-| `react-server-loader/loader` | `createReactLoader` → Node ESM `load` / `resolve` hooks. |
+| `react-server-loader/loader` | `createReactLoader` → Node ESM `load` / `resolve` hooks; the `Logger` contract + `CONSOLE_LOGGER` / `NULL_LOGGER` backends. |
 | `react-server-loader/directives` | Directive engine: `detectClientModule`, `sourceHasTopLevelClientDirective`, `analyzeModule`. Pure analysis, no transport dependency. |
 | `react-server-loader/transformer` | Source-to-source transform: `createTransformer`, `parse`, `transformModule`. |
 | `react-server-loader/server` (`/server.node`) | Vendored transport, server: `renderToPipeableStream`, `registerClientReference`, `decodeReply`, … (needs `--conditions react-server`). |
@@ -172,6 +172,91 @@ createReactLoader({
   },
 });
 ```
+
+## Loader options
+
+`createReactLoader(options)` — only `moduleID` is required:
+
+| option | type | default | purpose |
+| --- | --- | --- | --- |
+| `moduleID` | `(filePath: string) => string` | — | Maps an on-disk module to the id baked into each `registerClientReference` — where the client fetches that chunk from. |
+| `loader` | `Partial<LoaderConfig>` | the `react-server-dom-esm` contract | Override the transport contract (see *Overriding the contract*). |
+| `logger` | `Logger` | `CONSOLE_LOGGER` | Logging backend (see *Logging*). |
+| `verbose` | `boolean` | `false` | Emit a per-module trace through the logger. |
+| `onTransform` | `(info: { filePath; transformedId; source }) => void` | — | Fired for each module the loader transformed — wire it to a build manifest, a worker, an HMR channel. The loader itself stays orchestration-free. |
+
+## Logging
+
+The loader and the directive/transformer engines log through a minimal
+`Logger` (`info` / `warn` / `error`), re-exported from
+`react-server-loader/loader` with two built-in backends:
+
+```ts
+import {
+  createReactLoader,
+  CONSOLE_LOGGER,
+  NULL_LOGGER,
+  type Logger,
+} from "react-server-loader/loader";
+
+createReactLoader({ moduleID, logger: NULL_LOGGER }); // silence everything
+createReactLoader({ moduleID, verbose: true });       // default console backend, full trace
+
+// Route into your framework's logger:
+const logger: Logger = { info: log.debug, warn: log.warn, error: log.error };
+createReactLoader({ moduleID, logger });
+```
+
+Without `verbose`, only warnings and errors surface; `NULL_LOGGER` silences
+those too. `createTransformer` and `analyzeModule` take the same
+`logger` / `verbose`.
+
+## Integrating with Vite
+
+rsl ships no Vite (or any bundler) assumptions — the plugin supplies the
+bundler-specific policy. [`vite-plugin-react-server`](https://github.com/nicobrinkkemper/vite-plugin-react-server)
+is the reference integration; there are two wiring points.
+
+**1. The `transform` hook** — detect directive modules and rewrite them.
+Vite prepends imports (`__vitePreload`, the HMR client) ahead of a
+`"use client"` directive, so pass `tolerateLeadingCode` to stop the engine
+warning on that legitimately-injected code:
+
+```ts
+import { detectClientModule } from "react-server-loader/directives";
+import { createTransformer } from "react-server-loader/transformer";
+
+const tolerateLeadingCode = (src: string) =>
+  src.includes("__vitePreload") ||
+  src.includes("/@vite/client") ||
+  src.includes("import.meta.hot");
+
+// inside plugin.transform(code, id):
+if (detectClientModule({ source: code, moduleId: id })) {
+  const transform = createTransformer({
+    options: { moduleBase: "/", tolerateLeadingCode },
+  });
+  return transform(code, id); // -> { code, map }
+}
+```
+
+**2. The server render** — under `--conditions react-server`, register the
+loader so server modules transform on import. Wire your own `moduleID`
+policy, plus the optional `logger` / `onTransform`:
+
+```ts
+import { createReactLoader } from "react-server-loader/loader";
+
+const { load, resolve } = createReactLoader({
+  moduleID: (filePath) => /* your hosted-path policy */ filePath,
+  logger,                                          // the plugin's logger
+  onTransform: ({ transformedId, source }) => {    // feed a worker / manifest
+    /* … */
+  },
+});
+```
+
+See vprs's `plugin/loader/react-loader.ts` for the full production wiring.
 
 ## Versioning
 
@@ -260,7 +345,8 @@ version it built.
 The supported surface is the subpaths documented under *Subpaths* above and
 the symbols named there:
 
-- `react-server-loader/loader` — `createReactLoader`
+- `react-server-loader/loader` — `createReactLoader`, `Logger`,
+  `CONSOLE_LOGGER`, `NULL_LOGGER`
 - `react-server-loader/directives` — `detectClientModule`,
   `sourceHasTopLevelClientDirective`, `analyzeModule`
 - `react-server-loader/transformer` — `createTransformer`, `parse`,
