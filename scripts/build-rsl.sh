@@ -124,23 +124,36 @@ fi
 
 yarn install --frozen-lockfile 2>&1 | tail -5
 
+ROLLUP_OUTPUT="$REACT_DIR/build/node_modules/react-server-dom-esm"
+SRC_PKG_JSON="$REACT_DIR/packages/react-server-dom-esm/package.json"
+
 echo ""
 echo "==> Building react-server-dom-esm (~2 min) ..."
 # React's rollup build pulls transitive packages (react, scheduler,
 # react-reconciler, etc.) into the graph even when only one package is
 # requested. The downstream eslint-plugin-react-hooks TypeScript step can
-# fail on a clean checkout; tolerate non-zero exits and rely on the copy
-# step below to validate the artifacts actually landed.
-set +o pipefail
-RELEASE_CHANNEL="$CHANNEL" node scripts/rollup/build.js \
-  react-server-dom-esm 2>&1 | tail -20 || true
-set -o pipefail
+# fail on a clean checkout; tolerate non-zero exits and rely on the output
+# check below to validate the artifacts actually landed.
+#
+# React's build is also occasionally flaky — its prettier/Flow formatting step
+# can crash mid-run and produce no output. That's transient: a clean retry
+# succeeds. So retry a few times (wiping any partial output first) rather than
+# failing the whole release on a flake.
+BUILD_OK=false
+for attempt in 1 2 3; do
+  [ "$attempt" -gt 1 ] && echo "    React build produced no output (attempt $((attempt - 1))) — retrying ..."
+  rm -rf "$ROLLUP_OUTPUT"
+  set +o pipefail
+  RELEASE_CHANNEL="$CHANNEL" node scripts/rollup/build.js \
+    react-server-dom-esm 2>&1 | tail -20 || true
+  set -o pipefail
+  if [ -d "$ROLLUP_OUTPUT" ]; then BUILD_OK=true; break; fi
+done
 
-ROLLUP_OUTPUT="$REACT_DIR/build/node_modules/react-server-dom-esm"
-SRC_PKG_JSON="$REACT_DIR/packages/react-server-dom-esm/package.json"
-
-if [ ! -d "$ROLLUP_OUTPUT" ]; then
+if [ "$BUILD_OK" != "true" ]; then
   echo "ERROR: react-server-dom-esm build output not found at $ROLLUP_OUTPUT" >&2
+  echo "       React's rollup build failed 3 times. Re-run, or build it by hand:" >&2
+  echo "       (cd $REACT_DIR && RELEASE_CHANNEL=$CHANNEL node scripts/rollup/build.js react-server-dom-esm)" >&2
   exit 1
 fi
 if [ ! -f "$SRC_PKG_JSON" ]; then
