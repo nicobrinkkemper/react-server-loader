@@ -225,7 +225,18 @@ RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
     pkg.version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;    // synthesized (React publish convention)
     peer = pkg.version;                                           // EXACT pin (internals per-sha)
   } else {
-    pkg.version = reactFull;                                      // === transport/React version
+    // stable: @types-style. rsl OWNS its version (kept from package.json) so
+    // rsl-only fixes can ship without waiting for a new React; major.minor
+    // tracks the React minor, the patch is an rsl-owned revision. The peer
+    // floors at the vendored React (caret reactFull) — React compat lives in
+    // the peer, not the version string, so this stays sound w.r.t. the
+    // ReactSharedInternals bind.
+    const [rmaj, rmin] = reactFull.split(".");
+    const [omaj, omin] = String(pkg.version).split(".");
+    if (`${omaj}.${omin}` !== `${rmaj}.${rmin}`) {
+      console.warn(`WARNING: react-server-loader ${pkg.version} major.minor != vendored React ${rmaj}.${rmin}. ` +
+        `Set package.json version to ${rmaj}.${rmin}.0 for the new React minor before publishing.`);
+    }
     peer = `^${reactFull}`;                                       // React stable transport convention
   }
   pkg.peerDependencies = { ...pkg.peerDependencies, react: peer, "react-dom": peer };
@@ -244,11 +255,11 @@ VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo
 
 echo ""
 echo "==> Done. Vendored react-server-dom-esm: $REACT_VERSION (channel $CHANNEL)"
-echo "    react-server-loader will publish as: $VERSION  (=== transport version)"
+echo "    react-server-loader will publish as: $VERSION  (vendors react $REACT_VERSION)"
 echo "    Output: $VENDOR_DIR/react-server-dom-esm/"
 echo ""
 echo "package.json now carries the publish-ready version + peer. Next:"
 echo "  npm run verify   # gate against a real consumer"
 echo "  npm pack && npm publish <tgz> --tag $([ "$CHANNEL" = experimental ] && echo experimental || echo latest)"
-echo "  (build-rsl.sh sets package.json's version to the transport's; for a"
-echo "   throwaway local build, git checkout package.json afterwards.)"
+echo "  (stable keeps package.json's own version (@types-style); experimental"
+echo "   stamps a 0.0.0-experimental-<sha> snapshot — git checkout package.json after.)"

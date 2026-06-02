@@ -187,9 +187,9 @@ Most failures here reduce to *which React is resolved, and was the
 `react-server` condition set*. A quick triage:
 
 ```bash
-npm ls react react-dom                 # exactly one of each, at rsl's version?
-npm view react-server-loader version   # rsl's version === its vendored React
-node -p "process.execArgv"             # does it include --conditions=react-server?
+npm ls react react-dom                          # exactly one of each?
+npm view react-server-loader peerDependencies   # which React does rsl's transport need?
+node -p "process.execArgv"                      # does it include --conditions=react-server?
 ```
 
 If those three line up and you still see a mismatch, see

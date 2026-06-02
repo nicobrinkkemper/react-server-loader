@@ -49,10 +49,12 @@ through the package's `./server`, `./client`, and `./static` subpaths.
 This layer is not authored in rsl — it is produced by
 `scripts/build-rsl.sh`, which vendors the transport and stamps
 `package.json`. Because the transport binds directly to React internals
-(`ReactSharedInternals`) and throws on a version mismatch, **the rsl
-package version equals the vendored React version**. Everything above
-this layer is written to emit exactly the call shapes this transport
-expects to find at runtime.
+(`ReactSharedInternals`) and throws on a version mismatch, **the
+`react`/`react-dom` peer pins the exact React the transport was vendored
+from** (the package version itself is rsl's own, `@types`-style — see
+[vendoring-and-publishing](./vendoring-and-publishing.md#versioning)).
+Everything above this layer is written to emit exactly the call shapes this
+transport expects to find at runtime.
 
 The transformer never imports this layer; it only emits *references* to
 it by name. The names are configurable (see `LoaderConfig` below), and

@@ -27,10 +27,12 @@ to render React Server Components in pure ESM:
 ## Install
 
 `react-server-loader` ships **two trains**, one per React release channel.
-Its version equals the `react-server-dom-esm` (React) version it vendors, and
-the transport is hard-bound to that React's internals — so install a
-**matching** `react` / `react-dom`. Pick the train for the React you build
-against; the peer-dependency check flags any skew.
+The transport is hard-bound to one React build's internals, so install a
+**matching** `react` / `react-dom` — and trust the **peer dependency** (not
+the version number) to tell you which: the peer names the exact React the
+transport was vendored from, while the version is rsl's own (`@types`-style —
+major.minor tracks React, the patch is rsl's revision). Pick the train for the
+React you build against; the peer-dependency check flags any skew.
 
 **Stable React 19** (the `latest` tag):
 

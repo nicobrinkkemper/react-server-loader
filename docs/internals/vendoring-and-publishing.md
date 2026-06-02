@@ -14,34 +14,61 @@ release is "rebuild against a React ref, then pack."
 Only `react-server-dom-esm` is vendored. `react` and `react-dom` are **not** —
 they always come from the consumer's own install (the matching peer-dep range).
 
-## Why `version === transport version`
+## Versioning
 
 The transport is hard-bound to one React build's internals. At runtime it reads
 React's `ReactSharedInternals`; pair it with a different copy of React and it
-throws a *"React Element from an older version of React"* style error. So the
-package version is treated as the unambiguous signal of **which React's
-internals** this transport expects — it must match the vendored transport/React
-exactly, and the peer range must keep consumers on a compatible React.
+throws a *"React Element from an older version of React"* style error. So
+**which React** must be unambiguous — but that job belongs to the **peer**, not
+the version.
 
-This mirrors React's own published transports (`react-server-dom-webpack`,
-`react-server-dom-parcel`), which use the same convention.
-
-`build-rsl.sh` is the single source of truth for both fields: it stamps the
-**version** and the `react`/`react-dom` **peer** onto rsl's own
-`package.json`. The vendored transport's `package.json` is left exactly as
-React shipped it (the stamping step only rewrites rsl's package, not the
-vendored one).
+- The **peer** (`react`/`react-dom`) names the React build the transport was
+  vendored from. It's the binding that must match; a skewed install warns at
+  install time, before it can fail at runtime.
+- The **version** is rsl's *own*. Stable follows the **`@types` model**:
+  major.minor tracks React's minor, the **patch is rsl's revision** (just as
+  `@types/react@19.2.x` tracks React 19.2 while owning the `.x`). Experimental
+  is a per-build snapshot keyed to the React commit.
 
 | channel | rsl version | `react`/`react-dom` peer | npm dist-tag |
 | --- | --- | --- | --- |
-| **stable** | `<ReactVersion>` (e.g. `19.2.7`) | `^<ReactVersion>` | `latest` |
+| **stable** | `19.<minor>.<rsl-patch>` (e.g. `19.2.8`) | `^<vendored React>` (e.g. `^19.2.7`) | `latest` |
 | **experimental** | `0.0.0-experimental-<sha>-<date>` | that **exact** string | `experimental` |
 
-- **stable** — React keeps the RSC ABI stable within a major, so `^` floors at
-  the vendored build and is safe up to the next major. Same range
-  `react-server-dom-webpack@<ReactVersion>` ships.
-- **experimental** — internals change per commit, so the peer is an **exact**
-  pin. A wider range would let a consumer pair this transport with a *different*
+### Why stable owns its patch (and doesn't just equal the React version)
+
+The first stable cut, `19.2.7`, *did* equal the React it vendored — convenient,
+but a trap. npm versions are immutable and nothing sorts between `19.2.7` and
+React's eventual `19.2.8`, so once `19.2.7` was published, an **rsl-only fix**
+(a bug in the loader/transformer/shims, with no React change) had **no version
+to ship under** — it was stuck until React itself released. That bit us
+immediately: the prerender + ESM-server shim fixes needed for a consumer had
+nowhere to go.
+
+The `@types` model fixes it: the patch is rsl's, so `19.2.8` is *rsl revision 8*
+on the React 19.2 line — it still vendors React `19.2.7` (see the peer). There's
+no npm collision with a future `react@19.2.8` because they're different
+packages, exactly as `@types/react@19.2.x` coexists with `react@19.2.y`. React
+compat is enforced by the peer, not the version string, so the
+`ReactSharedInternals` binding stays sound. (This mirrors how `@types/*` vendor
+a specific upstream while shipping their own revisions.)
+
+### How `build-rsl.sh` stamps it
+
+`build-rsl.sh` writes the **version** and `react`/`react-dom` **peer** onto
+rsl's own `package.json`, and mirrors the version onto the vendored transport's
+`package.json` so the publish guard can assert they agree.
+
+- **stable** — keeps rsl's own version (maintainer-managed in `package.json`;
+  bump the patch per release), and sets peer `^<vendored React>`. React keeps
+  the RSC ABI stable within a major, so the caret floors at the vendored build
+  and is safe up to the next major — same range `react-server-dom-webpack`
+  ships. The script warns if `package.json`'s major.minor has drifted from the
+  vendored React (set it to `<major>.<minor>.0` when moving to a new React
+  minor).
+- **experimental** — synthesizes `0.0.0-experimental-<sha>-<date>` and pins the
+  peer to that exact string. Internals change per commit, so the peer is exact;
+  a wider range would let a consumer pair this transport with a *different*
   experimental React and crash on the `ReactSharedInternals` mismatch. `<sha>`
   is the React commit's first 8 chars (`git rev-parse HEAD`); `<date>` is the
   committer date `YYYYMMDD` in the commit's own timezone (matching

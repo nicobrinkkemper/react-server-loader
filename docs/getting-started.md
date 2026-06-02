@@ -12,11 +12,11 @@ bundler" example you can run with plain `node`.
 ## Install
 
 `react-server-loader` ships **two trains**, one per React release channel.
-The package version equals the version of the `react-server-dom-esm`
-transport it vendors, and the transport is hard-bound to one React build's
-internals — so you must install a **matching** `react` / `react-dom`. Pick
-the train for the React you build against; the versions line up so the
-install just works and the peer-dependency check flags any skew.
+The transport is hard-bound to one React build's internals, so you must
+install a **matching** `react` / `react-dom` — and the **peer dependency**
+(not the version number) is what names the right React. Pick the train for
+the React you build against; a plain install lines everything up and the
+peer-dependency check flags any skew.
 
 **Stable React 19** (the `latest` tag):
 
@@ -24,9 +24,11 @@ install just works and the peer-dependency check flags any skew.
 npm install react-server-loader react react-dom
 ```
 
-The stable train versions as `<ReactVersion>` (e.g. `19.2.7`) with a
-`react` / `react-dom` peer of `^<ReactVersion>` — any matching React 19.x at
-or above that satisfies the install.
+The stable version is rsl's own — major.minor tracks React's minor, the patch
+is rsl's revision (`@types`-style), e.g. `react-server-loader@19.2.8` vendors
+React `19.2.7`. Which React it needs is in the peer (`^19.2.7`), so a plain
+`npm install react-server-loader react react-dom` resolves `react` to a
+matching build.
 
 **Experimental React** (the `experimental` tag — newest RSC features):
 

@@ -3,14 +3,21 @@
 `react-server-loader` (rsl) bundles a *transport* —
 `react-server-dom-esm`, the RSC wire format that the React team doesn't
 publish to npm. That transport reaches into React's private internals at
-runtime, so rsl can't float free of the React it was built against. Its
-version scheme reflects that: **the rsl version is the React version it
-vendors.**
+runtime, so rsl can't float free of the React it was built against.
 
-This page is about picking and installing the right combination. For *why*
-the transport binds so tightly to a specific React build — and how the
-version/peer fields get stamped — see
-[internals/vendoring-and-publishing](./internals/vendoring-and-publishing.md#why-version--transport-version).
+Two fields encode that, and they encode **different** things:
+
+- the **peer** (`react` / `react-dom`) names the exact React build the
+  transport was vendored from — the binding that must match at runtime;
+- the **version** is rsl's *own*. Its major.minor tracks React's minor, but
+  the **patch is rsl's revision** — exactly like `@types/react@19.2.x` tracks
+  React 19.2 while owning the `.x`. That's what lets rsl ship a fix to its own
+  code (loader, transformer, shims) without waiting for a new React release.
+
+This page is about picking and installing the right combination. For *why* the
+transport binds so tightly to a specific React build — and why the version is
+rsl's own — see
+[internals/vendoring-and-publishing](./internals/vendoring-and-publishing.md#versioning).
 
 ## The rule: rsl, react, and react-dom move together
 
@@ -28,18 +35,19 @@ npm install react-server-loader react react-dom
 ```
 
 To keep them honest, rsl declares `react` and `react-dom` as **peer
-dependencies** and pins them to the build it was vendored from. A mismatched
-install surfaces as a peer-dependency warning at install time, before it can
-fail at runtime.
+dependencies** pinned to the build it was vendored from. A mismatched install
+surfaces as a peer-dependency warning at install time, before it can fail at
+runtime — so trust the peer, not the version number, to tell you which React
+to install.
 
 ## Two trains
 
-React ships on two release channels, and rsl mirrors them one-to-one. Pick
-the train that matches the React you build against.
+React ships on two release channels, and rsl tracks them. Pick the train that
+matches the React you build against.
 
 | Train | dist-tag | rsl version | `react` / `react-dom` peer |
 | --- | --- | --- | --- |
-| **stable** | `latest` | `<ReactVersion>` — e.g. `19.2.7` | `^<ReactVersion>` — e.g. `^19.2.7` |
+| **stable** | `latest` | `19.<minor>.<rsl-patch>` — e.g. `19.2.8` | `^<vendored React>` — e.g. `^19.2.7` |
 | **experimental** | `experimental` | `0.0.0-experimental-<sha>-<date>` | that **exact** string |
 
 You need a React **19+** build with React Server Components support either
@@ -51,10 +59,17 @@ way.
 npm install react-server-loader react react-dom
 ```
 
-The stable rsl version *is* a React version (`19.2.7` vendors React
-`19.2.7`), and its peer range is `^<ReactVersion>`. The caret means any
-React 19.x at or above that minor satisfies the install — patch and minor
-React updates don't force an rsl bump on you.
+The stable version's **major.minor** tracks React's minor (`19.2.x` → React
+19.2), but the **patch is rsl's own revision** — `react-server-loader@19.2.8`
+does not mean React 19.2.8; it means rsl revision 8 on the React 19.2 line.
+Which React it actually vendored is in the **peer** (`^19.2.7`), and a plain
+`npm install react-server-loader react react-dom` resolves `react` to a
+matching build. The caret means any React 19.x at or above the vendored build
+satisfies the install — React patch/minor updates don't force an rsl bump.
+
+(So the version is monotonic but doesn't encode React's exact patch; the peer
+does. This is the trade for being able to ship rsl-only fixes between React
+releases — see the internals doc.)
 
 ### Experimental (the `experimental` tag)
 
@@ -84,9 +99,12 @@ above) so they resolve to the same day's build.
 ## Picking a version
 
 - Building against **stable React 19**? Use the `latest` train. A normal
-  `npm install react-server-loader react react-dom` lines everything up.
+  `npm install react-server-loader react react-dom` lines everything up — let
+  the peer pick the React, ignore the rsl patch number.
 - Need **bleeding-edge RSC features**? Use the `experimental` train, and
   pin `react` / `react-dom` to the exact build rsl names in its peer.
 - Either way, if the peer-dependency checker warns about a `react` /
   `react-dom` skew, fix it before running — that warning is the early
   signal of the runtime mismatch described above.
+```
+
