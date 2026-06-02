@@ -58,6 +58,14 @@ export type TransformOptions = {
    * `DirectiveOptions.tolerateLeadingCode`. Default: strict (no tolerance).
    */
   tolerateLeadingCode?: (source: string) => boolean;
+  /**
+   * Host predicate: is this module id third-party/external? External modules
+   * are not hidden in non-server environments (they may be needed as-is).
+   * Default: `(id) => id.includes("node_modules")`. Override when your module
+   * ids don't follow the node_modules filesystem convention (virtual ids,
+   * hashed ids, …) — rsl makes no assumption about the id shape.
+   */
+  isExternalModule?: (moduleId: string) => boolean;
   // moduleID is on .loader.moduleID
   // moduleID?: (moduleId: string) => string;
 };
@@ -77,7 +85,7 @@ export type TransformFunction = (
 
 export type TransformerFactory = (options: {
   parseFn?: ParseFn;
-  options: Pick<TransformOptions, 'verbose' | 'loader' | 'panicThreshold' | 'logger' | 'moduleBase' | 'tolerateLeadingCode'>;
+  options: Pick<TransformOptions, 'verbose' | 'loader' | 'panicThreshold' | 'logger' | 'moduleBase' | 'tolerateLeadingCode' | 'isExternalModule'>;
   forceServerFunction?: boolean | undefined;
   forceClientComponent?: boolean | undefined;
   isServerEnvironment?: boolean;

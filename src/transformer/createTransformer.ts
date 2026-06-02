@@ -25,6 +25,7 @@ export const createTransformer: TransformerFactory = ({
     verbose,
     logger = NULL_LOGGER,
     loader = DEFAULT_LOADER_CONFIG,
+    isExternalModule = (id: string) => id.includes("node_modules"),
   } = options;
 
   // Track if forceServerFunction/forceClientComponent were explicitly passed (for testing)
@@ -89,7 +90,7 @@ export const createTransformer: TransformerFactory = ({
         !hasClientDirective &&
         !hasServerDirective &&
         !loader?.isClientComponentByName?.(moduleId, transformedModuleId) &&
-        !moduleId.includes("node_modules")
+        !isExternalModule(moduleId)
       ) {
         // In non-server environments, server components (modules without client/server directives and not client by name) should be hidden
         // This prevents server components from being loaded in client/ssr environments
