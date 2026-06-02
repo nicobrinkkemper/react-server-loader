@@ -77,11 +77,18 @@ release_one() {
   echo "==> Published react-server-loader@$version @ $tag"
 }
 
+# Under @types-style stable versioning, package.json's version is rsl's own
+# (e.g. 19.2.8); the React to vendor is named by the peer (^19.2.7). So the
+# default stable build ref comes from the peer, not the version.
+stable_react_ref() {
+  node -p "'v' + (require('./package.json').peerDependencies.react.match(/[0-9]+[.][0-9]+[.][0-9]+/) || ['0.0.0'])[0]"
+}
+
 if [ "$BOTH" = "true" ]; then
   # Capture the stable version BEFORE the experimental build mutates package.json.
   STABLE_VERSION="$(node -p "require('./package.json').version")"
   EXP_REF="${EXPERIMENTAL_REF:-main}"
-  STB_REF="${STABLE_REF:-v$STABLE_VERSION}"
+  STB_REF="${STABLE_REF:-$(stable_react_ref)}"
   echo "==> Releasing BOTH trains: experimental ($EXP_REF) then stable ($STB_REF)."
   # Experimental first; stable last re-stamps package.json back to $STABLE_VERSION.
   release_one experimental "$EXP_REF" experimental
@@ -96,7 +103,7 @@ if [ -z "$REACT_REF" ]; then
   if [ "$CHANNEL" = "experimental" ]; then
     REACT_REF="main"
   else
-    REACT_REF="v$(node -p "require('./package.json').version")"
+    REACT_REF="$(stable_react_ref)"
   fi
 fi
 TAG=$([ "$CHANNEL" = "experimental" ] && echo "experimental" || echo "latest")
