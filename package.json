@@ -71,7 +71,8 @@
     "test:transport": "node --conditions=react-server test/transport-smoke.mjs",
     "build:vendor": "bash scripts/build-rsl.sh",
     "build:vendor:stable": "bash scripts/build-rsl.sh --channel stable",
-    "verify": "bash scripts/verify-release.sh"
+    "verify": "bash scripts/verify-release.sh",
+    "release:check": "node scripts/check-release-needed.mjs"
   },
   "engines": {
     "node": ">=22.0.0"
