@@ -68,10 +68,22 @@ TARBALL="$(cd "$(dirname "$TARBALL")" && pwd)/$(basename "$TARBALL")"
 WORK="$(mktemp -d)"
 tar -xzf "$TARBALL" -C "$WORK"            # -> $WORK/package
 PKG_VERSION="$(node -p "require('$WORK/package/package.json').version")"
+PEER_REACT="$(node -p "require('$WORK/package/package.json').peerDependencies.react")"
+
+# The Flight server/client share internals with the react package itself, so
+# an experimental transport only runs against the exact React it was built
+# from (that's why the experimental train pins its peer exactly). Gate the
+# experimental tarball against THAT React, not the consumer's stable install —
+# otherwise the gate fails on internals skew, not on anything rsl shipped.
+SWAP_REACT="false"
+case "$PEER_REACT" in
+  0.0.0-experimental-*|*-canary-*) SWAP_REACT="true" ;;
+esac
 
 echo "==> Verifying react-server-loader@$PKG_VERSION"
 echo "    tarball:  $TARBALL"
 echo "    consumer: $CONSUMER_DIR"
+echo "    react:    $PEER_REACT$([ "$SWAP_REACT" = "true" ] && echo " (staged into consumer for the gate)" || true)"
 echo "    test:     $VERIFY_TEST_CMD"
 
 # 2. Swap the tarball into the consumer, with guaranteed restore -------------
@@ -80,6 +92,8 @@ BACKUP="$LINK.rsl-verify-backup"
 ORIG_KIND="none"
 ORIG_TARGET=""
 
+REACT_SWAPPED=""
+
 restore() {
   rm -rf "$LINK"
   case "$ORIG_KIND" in
@@ -87,6 +101,15 @@ restore() {
     dir)     [ -e "$BACKUP" ] && mv "$BACKUP" "$LINK" ;;
     none)    : ;;
   esac
+  for m in $REACT_SWAPPED; do
+    rm -rf "$CONSUMER_DIR/node_modules/$m"
+    [ -e "$CONSUMER_DIR/node_modules/$m.rsl-verify-backup" ] &&
+      mv "$CONSUMER_DIR/node_modules/$m.rsl-verify-backup" "$CONSUMER_DIR/node_modules/$m"
+  done
+  if [ -n "$REACT_SWAPPED" ]; then
+    rm -rf "$CONSUMER_DIR/node_modules/.vite"
+    echo "==> Restored consumer's original react family ($REACT_SWAPPED )."
+  fi
   rm -rf "$WORK"
   echo "==> Restored consumer's original react-server-loader link."
 }
@@ -98,6 +121,26 @@ elif [ -e "$LINK" ]; then
   ORIG_KIND="dir"; rm -rf "$BACKUP"; mv "$LINK" "$BACKUP"
 fi
 cp -r "$WORK/package" "$LINK"
+
+# 2b. Experimental train: stage the matching React family into the consumer --
+if [ "$SWAP_REACT" = "true" ]; then
+  echo "==> Staging react@$PEER_REACT (+ matching react-dom, scheduler) ..."
+  # A real npm install resolves the matching scheduler for us.
+  npm install --prefix "$WORK/react-stage" --no-save --silent \
+    "react@$PEER_REACT" "react-dom@$PEER_REACT"
+  for m in react react-dom scheduler; do
+    src="$WORK/react-stage/node_modules/$m"
+    [ -d "$src" ] || { echo "ERROR: staged $m missing at $src" >&2; exit 1; }
+    tgt="$CONSUMER_DIR/node_modules/$m"
+    rm -rf "$tgt.rsl-verify-backup"
+    [ -e "$tgt" ] && mv "$tgt" "$tgt.rsl-verify-backup"
+    cp -r "$src" "$tgt"
+    REACT_SWAPPED="$REACT_SWAPPED $m"
+  done
+  # Vite prebundle caches won't notice a dir swap — clear so the gate can't
+  # run against stale stable-React bytes.
+  rm -rf "$CONSUMER_DIR/node_modules/.vite"
+fi
 
 # 3. Run the consumer's integration suite against the packaged tarball -------
 echo "==> Running consumer integration suite ..."
