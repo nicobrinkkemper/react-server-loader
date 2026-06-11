@@ -43,7 +43,11 @@ export function test() {
     );
   });
 
-  test("should warn about file-level directive after comments", async () => {
+  // Comments are trivia, not code: a directive after nothing but comments is
+  // a valid directive prologue. Compiled library output routinely ships
+  // banner/JSDoc comments above "use client" (tsup/rollup banners), and the
+  // worker loader path must classify those identically to the build side.
+  test("should NOT warn about file-level directive after comments only", async () => {
     const result = await analyzeModule(
       `// Some comment
 /* Another comment */
@@ -53,7 +57,55 @@ export function test() {
 }`,
       testLoaderConfig
     );
-    expect(result.directiveInfo?.warnings).toHaveLength(1);
+    expect(result.directiveInfo?.fileLevel?.type).toBe("client");
+    expect(result.directiveInfo?.warnings).toEqual([]);
+  });
+
+  test("should accept a JSDoc block before 'use client' without warnings", async () => {
+    const result = await analyzeModule(
+      `/**
+ * A widget library.
+ * @license MIT
+ */
+"use client";
+export function Widget() {
+  return null;
+}`,
+      testLoaderConfig
+    );
+    expect(result.directiveInfo?.fileLevel?.type).toBe("client");
+    expect(result.directiveInfo?.warnings).toEqual([]);
+  });
+
+  test("should accept use-strict + JSDoc + use-client together (compiled node_modules shape)", async () => {
+    const result = await analyzeModule(
+      `"use strict";
+/**
+ * compiled by tsup
+ */
+"use client";
+export function Button() {
+  return null;
+}`,
+      testLoaderConfig
+    );
+    expect(result.directiveInfo?.fileLevel?.type).toBe("client");
+    expect(result.directiveInfo?.warnings).toEqual([]);
+  });
+
+  test("should still warn when CODE precedes the directive even with comments around it", async () => {
+    const result = await analyzeModule(
+      `// banner
+const x = 1;
+"use client";
+export function test() { return x; }`,
+      testLoaderConfig
+    );
+    expect(
+      result.directiveInfo?.warnings.some((w) =>
+        w.message.includes("must be at the top of the file")
+      )
+    ).toBe(true);
   });
 
   // Real-world libraries (e.g. compiled output of @chakra-ui/react,
