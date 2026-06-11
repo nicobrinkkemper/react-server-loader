@@ -73,6 +73,15 @@ export interface CreateReactLoaderOptions {
 
   /** Print per-module trace lines via the logger when true. */
   verbose?: boolean;
+
+  /**
+   * Host policy: returns true when leading content above a file-level
+   * directive is expected (e.g. bundler-injected preamble) and the
+   * misplaced-directive warning should be suppressed. Forwarded to the
+   * directive engine — see `TransformOptions.tolerateLeadingCode`.
+   * Comments alone never need this: they are trivia and tolerated always.
+   */
+  tolerateLeadingCode?: (source: string) => boolean;
 }
 
 /**
@@ -114,6 +123,7 @@ export function createReactLoader(options: CreateReactLoaderOptions): {
       verbose,
       logger,
       loader: loaderConfig,
+      tolerateLeadingCode: options.tolerateLeadingCode,
     },
   });
 

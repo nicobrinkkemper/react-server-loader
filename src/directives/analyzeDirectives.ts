@@ -231,12 +231,16 @@ beforeNode: ${node.start! > 0 ? JSON.stringify(source.slice(0, node.start!)).sli
   if (firstDirective) {
     directiveInfo.fileLevel = firstDirective;
 
-    // Check if there was content (including comments) before the directive,
-    // skipping past any benign prologue directives (e.g. "use strict") that
-    // legitimately precede a "use client" / "use server".
+    // Check if there was CODE before the directive, skipping past any benign
+    // prologue directives (e.g. "use strict") that legitimately precede a
+    // "use client" / "use server". Comments are trivia, not code: a JSDoc or
+    // banner comment above the directive is a valid directive prologue — and
+    // common in compiled library output (tsup/rollup banners) — so they are
+    // stripped before deciding the directive is misplaced.
     if (!foundNonDirective && firstDirective.range[0] > lastProloguePos) {
       const beforeDirective = source
         .slice(lastProloguePos, firstDirective.range[0])
+        .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "")
         .trim();
       if (beforeDirective.length > 0) {
         foundNonDirective = true;
