@@ -33,6 +33,29 @@ to render React Server Components in pure ESM:
   into `node:module#register`, so a plain `node --import … --conditions
   react-server` serves RSC modules with no bundler at all.
 
+## Why not React's reference loader?
+
+`react-server-dom-esm` ships a reference Node loader
+(`react-server-dom-esm/node-loader`). This package implements its own
+instead, because the reference loader:
+
+- parses source as plain JS — no TypeScript/TSX at load time, which a dev
+  server importing project source needs;
+- hardcodes file URLs as client-reference module IDs — there is no seam to
+  inject a hosted-ID policy that matches a build's chunk naming (hash,
+  base path), and that seam is where bundler integration actually lives;
+- does no CJS interop for `react` under the react-server condition, so
+  esbuild/tsx-emitted named imports (`import { useState } from "react"`)
+  fail at link time;
+- is hardwired to the esm transport, where `createReactLoader`
+  parametrizes the transport via `LoaderConfig`;
+- is single-process — no hook for worker/MessagePort orchestration;
+- keeps its directive detection separate from any build-time transformer,
+  reintroducing the worker-vs-bundler classification drift this package's
+  shared `detectClientModule` exists to prevent;
+- and lives in the same unpublished package as the transport — consuming
+  it would still mean vendoring.
+
 ## Install
 
 `react-server-loader` ships **two trains**, one per React release channel.
