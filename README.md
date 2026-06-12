@@ -1,6 +1,15 @@
 # react-server-loader
 
-Loader-side tooling for React Server Components in ESM environments.
+The React-version-locked half of an ESM React Server Components setup:
+the vendored RSC transport (server **and** browser client), a directive
+engine, transformer primitives, and a Node ESM loader.
+
+> **Despite the name, this is not only a Node loader.** The vendored
+> transport includes `client.browser` — the flight client your BROWSER
+> bundle ships to decode RSC payloads and hydrate. Everything in this
+> package shares one property: it must match your React version exactly,
+> which is why versions mirror React's (`19.2.x` stable,
+> `0.0.0-experimental-*`).
 
 > **Scope:** use React, but with a native-ESM workflow in mind. Anything
 > that helps you run React (and RSC) in pure ESM belongs here; shipping a
