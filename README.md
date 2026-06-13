@@ -1,6 +1,15 @@
 # react-server-loader
 
-Loader-side tooling for React Server Components in ESM environments.
+The React-version-locked half of an ESM React Server Components setup:
+the vendored RSC transport (server **and** browser client), a directive
+engine, transformer primitives, and a Node ESM loader.
+
+> **Despite the name, this is not only a Node loader.** The vendored
+> transport includes `client.browser` — the flight client your BROWSER
+> bundle ships to decode RSC payloads and hydrate. Everything in this
+> package shares one property: it must match your React version exactly,
+> which is why versions mirror React's (`19.2.x` stable,
+> `0.0.0-experimental-*`).
 
 > **Scope:** use React, but with a native-ESM workflow in mind. Anything
 > that helps you run React (and RSC) in pure ESM belongs here; shipping a
@@ -23,6 +32,29 @@ to render React Server Components in pure ESM:
 - **A Node ESM loader factory** (`createReactLoader`) that wires the above
   into `node:module#register`, so a plain `node --import … --conditions
   react-server` serves RSC modules with no bundler at all.
+
+## Why not React's reference loader?
+
+`react-server-dom-esm` ships a reference Node loader
+(`react-server-dom-esm/node-loader`). This package implements its own
+instead, because the reference loader:
+
+- parses source as plain JS — no TypeScript/TSX at load time, which a dev
+  server importing project source needs;
+- hardcodes file URLs as client-reference module IDs — there is no seam to
+  inject a hosted-ID policy that matches a build's chunk naming (hash,
+  base path), and that seam is where bundler integration actually lives;
+- does no CJS interop for `react` under the react-server condition, so
+  esbuild/tsx-emitted named imports (`import { useState } from "react"`)
+  fail at link time;
+- is hardwired to the esm transport, where `createReactLoader`
+  parametrizes the transport via `LoaderConfig`;
+- is single-process — no hook for worker/MessagePort orchestration;
+- keeps its directive detection separate from any build-time transformer,
+  reintroducing the worker-vs-bundler classification drift this package's
+  shared `detectClientModule` exists to prevent;
+- and lives in the same unpublished package as the transport — consuming
+  it would still mean vendoring.
 
 ## Install
 
