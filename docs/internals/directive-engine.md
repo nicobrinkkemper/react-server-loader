@@ -134,15 +134,21 @@ the engine pushes a warning:
 (with `range: [0, 0]`, `type: "server"`).
 
 For every non-directive top-level node seen *before* `firstDirective`,
-`foundNonDirective` is set. Imports/exports and any other statement count as
-real code here. Additionally, the engine slices `source` between
-`lastProloguePos` and the node's start and, if the trimmed slice is non-empty
-(comments or stray content), sets `foundNonDirective` too.
+`foundNonDirective` is set — imports/exports and any other statement count as
+real code.
+
+Comments and benign prologues are not code, though. `"use strict"`-style string
+prologues are walked past via `lastProloguePos`, so they don't push a later
+`"use client"` out of position; and the final placement guard strips `/* … */`
+and `// …` comments out of the gap between `lastProloguePos` and the directive
+before judging it misplaced. So a JSDoc or banner comment above the directive —
+common in compiled library output (tsup/rollup banners) — is treated as trivia,
+not as "other code", and does not trip the placement warning.
 
 After the loop, if `firstDirective` exists it is assigned to
-`directiveInfo.fileLevel`. A final guard re-checks the gap between
-`lastProloguePos` and the directive's start for non-whitespace content. Then the
-placement warning fires only when `foundNonDirective && !tolerateLeadingCode`:
+`directiveInfo.fileLevel`, and that comment-stripping guard runs over the gap
+before the directive. The placement warning fires only when
+`foundNonDirective && !tolerateLeadingCode`:
 
 > File-level directives must be at the top of the file, before any other code
 
