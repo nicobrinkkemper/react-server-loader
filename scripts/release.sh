@@ -17,6 +17,12 @@ set -euo pipefail
 #   ./scripts/release.sh --both                      # experimental THEN stable, one command
 #   ./scripts/release.sh --both --stable-ref v19.2.7 --experimental-ref main
 #   ./scripts/release.sh --dry-run                   # build + guard + gate + pack, no publish
+#   ./scripts/release.sh --react-dir ~/code/react-stable   # build from a dedicated React checkout
+#
+# --react-dir points the transport build at an existing React checkout instead
+# of the auto-detected sibling (`../react`). Use it to keep a working React tree
+# (e.g. one on a feature branch) untouched: clone a dedicated checkout once and
+# build releases from there. Forwarded verbatim to build-rsl.sh.
 #
 # --both runs experimental first, stable last, so package.json ends stamped at
 # the stable version (clean tree). The two are separate versions (19.2.7 vs
@@ -29,6 +35,7 @@ cd "$PKG_DIR"
 
 CHANNEL="stable"
 REACT_REF=""
+REACT_DIR=""
 BOTH="false"
 STABLE_REF=""
 EXPERIMENTAL_REF=""
@@ -37,11 +44,12 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --channel)          CHANNEL="$2"; shift 2 ;;
     --react-ref)        REACT_REF="$2"; shift 2 ;;
+    --react-dir)        REACT_DIR="$2"; shift 2 ;;
     --both)             BOTH="true"; shift ;;
     --stable-ref)       STABLE_REF="$2"; shift 2 ;;
     --experimental-ref) EXPERIMENTAL_REF="$2"; shift 2 ;;
     --dry-run)          DRY_RUN="true"; shift ;;
-    -h|--help)          sed -n '4,25p' "$0"; exit 0 ;;
+    -h|--help)          sed -n '4,30p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -52,7 +60,8 @@ release_one() {
   echo ""
   echo "==> Train: channel=$channel  react-ref=$ref  dist-tag=$tag"
   echo "==> [1/4] Building + vendoring the transport ..."
-  bash "$SCRIPT_DIR/build-rsl.sh" --channel "$channel" --react-ref "$ref"
+  bash "$SCRIPT_DIR/build-rsl.sh" --channel "$channel" --react-ref "$ref" \
+    ${REACT_DIR:+--react-dir "$REACT_DIR"}
 
   echo "==> [2/4] Guard + pack ..."
   node "$SCRIPT_DIR/check-publishable.mjs"
