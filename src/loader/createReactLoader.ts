@@ -10,6 +10,7 @@ import {
   type Logger,
 } from "../directives/options.js";
 import type { LoaderConfig } from "../transformer/types.js";
+import type { ReferenceGate } from "../references/index.js";
 
 /**
  * Resolution policy: how the loader turns the URL Node hands it
@@ -66,6 +67,20 @@ export interface CreateReactLoaderOptions {
    * does not inspect the return value.
    */
   onTransform?: OnTransformCallback;
+
+  /**
+   * Optional reference gate (the manifest-backed allowlist). When provided,
+   * every RSC boundary the loader transforms is registered into it, keyed by
+   * the hosted id `moduleID` emitted, with an importer bound to the module's
+   * real URL. Resolving an incoming server-action / client-reference id through
+   * the gate then becomes a closed lookup instead of importing the id's path
+   * directly — see `createReferenceGate`. Composes with `onTransform`; both run.
+   *
+   * Population is incremental (one entry per boundary as it loads), which suits
+   * dev. For a production trust boundary the host seals the gate after a build
+   * pass has driven every boundary through the loader.
+   */
+  gate?: ReferenceGate;
 
   /** Logger backend. Defaults to a `console`-backed logger; pass
    * `NULL_LOGGER` to silence. */
@@ -237,6 +252,17 @@ export function createReactLoader(options: CreateReactLoaderOptions): {
       source: transformed,
       isServer,
       isClient,
+    });
+
+    // Register the boundary in the manifest gate (if any), keyed by the hosted
+    // id. The importer is bound to this module's real URL — never to an id that
+    // arrives from a client — so a forged reference id can't reach it. A module
+    // flagged as both is treated as server (the action surface is the sensitive
+    // one); in practice a file is either "use server" or "use client".
+    options.gate?.register({
+      id: transformedId,
+      kind: isServer ? "server" : "client",
+      load: () => import(url) as Promise<Record<string, unknown>>,
     });
 
     return {

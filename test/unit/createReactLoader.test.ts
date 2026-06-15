@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { LoadHook, LoadHookContext } from "node:module";
 import { createReactLoader } from "../../src/loader/index.js";
+import { createReferenceGate } from "../../src/references/index.js";
 
 /**
  * Helpers — stand-ins for what Node would pass into the loader chain.
@@ -162,6 +163,67 @@ describe("createReactLoader / load hook", () => {
     // The directive engine itself didn't flag this module, so the
     // moduleID callback is called with `isClientByDirective=false`.
     expect(moduleID.mock.calls[0]![2]).toBe(false);
+  });
+});
+
+describe("createReactLoader / reference gate wiring", () => {
+  it("registers a transformed server boundary keyed by its hosted id", async () => {
+    const gate = createReferenceGate({ mode: "open" });
+    const register = vi.spyOn(gate, "register");
+    const { load } = createReactLoader({
+      moduleID: (filePath) => `/hosted${filePath}`,
+      gate,
+    });
+    const next = stubNextLoad(
+      `"use server";\nexport async function submit() {}`,
+    );
+
+    await load(fileURL("/actions.ts"), stubContext(), next as unknown as LoadHook);
+
+    expect(register).toHaveBeenCalledTimes(1);
+    const entry = register.mock.calls[0]![0];
+    expect(entry.id).toBe("/hosted/actions.ts");
+    expect(entry.kind).toBe("server");
+    expect(typeof entry.load).toBe("function");
+  });
+
+  it("registers a client boundary as kind 'client'", async () => {
+    const gate = createReferenceGate({ mode: "open" });
+    const register = vi.spyOn(gate, "register");
+    const { load } = createReactLoader({
+      moduleID: (filePath) => `/hosted${filePath}`,
+      gate,
+    });
+    const next = stubNextLoad(`"use client";\nexport function Counter() {}`);
+
+    await load(fileURL("/Counter.tsx"), stubContext(), next as unknown as LoadHook);
+
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(register.mock.calls[0]![0].kind).toBe("client");
+  });
+
+  it("does not register non-boundary modules", async () => {
+    const gate = createReferenceGate({ mode: "open" });
+    const register = vi.spyOn(gate, "register");
+    const { load } = createReactLoader({ moduleID: stubID, gate });
+    const next = stubNextLoad("export const x = 1;");
+
+    await load(fileURL("/plain.js"), stubContext(), next as unknown as LoadHook);
+
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  it("composes with onTransform — both fire for one boundary", async () => {
+    const gate = createReferenceGate({ mode: "open" });
+    const register = vi.spyOn(gate, "register");
+    const onTransform = vi.fn();
+    const { load } = createReactLoader({ moduleID: stubID, gate, onTransform });
+    const next = stubNextLoad(`"use server";\nexport async function a() {}`);
+
+    await load(fileURL("/a.ts"), stubContext(), next as unknown as LoadHook);
+
+    expect(onTransform).toHaveBeenCalledTimes(1);
+    expect(register).toHaveBeenCalledTimes(1);
   });
 });
 

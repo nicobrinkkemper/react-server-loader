@@ -28,6 +28,14 @@ describe("public API surface — resolves via the exports map", () => {
     expect(m.transformModule).toBeTypeOf("function");
   });
 
+  it("react-server-loader/references", async () => {
+    const m = await import("react-server-loader/references");
+    expect(m.createReferenceGate).toBeTypeOf("function");
+    const gate = m.createReferenceGate({ mode: "sealed" });
+    gate.seal();
+    await expect(gate.resolveServerReference("/x.ts#a")).rejects.toThrow();
+  });
+
   it("react-server-loader (root) re-exports the headline three", async () => {
     const m = await import("react-server-loader");
     expect(m.createReactLoader).toBeTypeOf("function");
