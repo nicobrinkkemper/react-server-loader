@@ -171,6 +171,7 @@ node --import ./register.mjs --conditions=react-server server.js
 | `logger` | `Logger` | console-backed when `verbose`, otherwise silent | Logging backend. |
 | `verbose` | `boolean` | `false` | Emit a per-module trace. |
 | `onTransform` | `(info) => void` | — | Fired for each transformed module. `info` is `{ url, filePath, transformedId, source, isServer, isClient }`. The loader ignores the return value. |
+| `gate` | `ReferenceGate` | — | A manifest gate (see §4). When passed, the loader registers every boundary it transforms into it, keyed by the hosted id, with an importer bound to the module's real url. |
 
 ### How vprs wires it
 
@@ -227,6 +228,53 @@ specify the fields that differ. The common ones are the register-reference
 function names (`registerClientReferenceName`,
 `registerServerReferenceName`) and the transport import paths
 (`importServerPath`, `importClientPath`).
+
+## 4. Closing reference resolution: the gate
+
+A server-action id and a client-reference id both arrive from the client. The
+ESM transport resolves them with a base-URL prefix check and a direct
+`import()`, which is an open allowlist (any module under the root, any export).
+The bundler transports gate on a build-time manifest instead. `createReferenceGate`
+(`react-server-loader/references`) is that manifest, decoupled from any one
+transport: its only input is `(hostedId → real importer)` pairs.
+
+Two responsibilities, and they split cleanly across the loader boundary:
+
+**Producing the manifest** is your integration's job, because only it knows the
+full set of boundaries. The simplest wiring reuses the loader's existing
+transform pass — pass the gate and every boundary registers itself:
+
+```ts
+import { createReferenceGate, createReactLoader } from "react-server-loader";
+
+const gate = createReferenceGate({ mode: isProd ? "sealed" : "open" });
+
+const { load } = createReactLoader({ moduleID: yourPolicy, gate });
+// …drive a build pass (render once / crawl the graph) so every boundary loads…
+if (isProd) gate.seal();
+```
+
+A bundler that already enumerates the graph (Rollup/Rolldown via `moduleParsed`
+/ `this.getModuleInfo`, or a webpack/parcel manifest) can skip the loader pass
+and `gate.register({ id, kind, load: () => import(realUrl) })` directly. The
+importer must bind to the **real** url discovered at build time, never to the
+incoming id.
+
+**Enforcing it** is the gate's job. At your request boundary, resolve the
+client-supplied id through the gate instead of importing its path:
+
+```ts
+// where you currently do: const mod = await import(idToPath(actionId))
+const action = await gate.resolveServerReference(actionId); // throws if unknown
+const result = await action(...args);
+```
+
+`sealed` (production) is the trust boundary — an unregistered id throws, and a
+`../` id can't resolve because it was never a registered key. `open`
+(development) optionally falls back to a `devResolve` for ids not yet seen; it
+is **not** a trust boundary and belongs only where the server isn't exposed to
+untrusted clients. This is the same dev/prod split React's own fixtures and the
+official Vite plugin use.
 
 ## Logging
 

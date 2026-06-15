@@ -127,6 +127,69 @@ The full walkthrough — server component, directive modules, and why each
 path argument lines up — is in
 [Getting started](docs/getting-started.md).
 
+## Securing references: the manifest gate
+
+A server-action id and a client-reference id both arrive **from the client**.
+The transport's own resolution checks only that the id's path sits under a base
+URL and then imports it — an open allowlist: any module under the root can be
+imported and any of its exports invoked, whether or not it was ever marked
+`"use server"`. The bundler transports (webpack/parcel) and the official Vite
+plugin avoid this by resolving against a **closed, build-time manifest** of
+references: a dictionary lookup that throws on an unknown id. The ESM transport
+ships no such manifest because it has no bundler to build one.
+
+`createReferenceGate` is that manifest, authored here so it works under any
+transport. The contract is intentionally tiny — the only input is
+`(hostedId → real importer)` pairs:
+
+```ts
+import { createReferenceGate, createReactLoader } from "react-server-loader";
+
+// One gate per server. Seal it in production; leave it open in dev.
+const gate = createReferenceGate({
+  mode: process.env.NODE_ENV === "production" ? "sealed" : "open",
+});
+
+// The loader registers every boundary it transforms — keyed by the hosted id
+// your moduleID emits, with an importer bound to the module's REAL url.
+const { load } = createReactLoader({
+  moduleID: (filePath) => filePath.replace(process.cwd(), ""),
+  gate,
+});
+
+// After a build pass has driven every boundary through the loader:
+gate.seal();
+
+// Resolve incoming ids through the gate instead of importing their path:
+const action = await gate.resolveServerReference(idFromClient); // throws if unknown
+```
+
+Why this closes the hole:
+
+- **The incoming id is only ever a dictionary key.** Resolution imports the
+  build-bound module, never a path derived from the id, so a forged id — or one
+  containing `../` — can't reach anything. An id that was never registered
+  simply isn't a key, which makes traversal *structurally* impossible rather
+  than something to filter.
+- **A registered module can't be used to reach an unmarked export.** After
+  import, the named export is verified to carry React's registered-reference tag
+  before it is returned.
+
+**Dev vs production.** `sealed` is the trust boundary: an unregistered id
+throws. `open` is a development convenience — with a `devResolve` it falls back
+to importing an as-yet-unregistered id on demand, so the no-bundler workflow
+works before a build pass has enumerated everything. **Open mode is not a trust
+boundary**; only wire it where the server isn't exposed to untrusted clients
+(the same dev/prod split the official Vite plugin and React's own fixtures use).
+
+**Feeding it from a bundler.** Because the only input is `(hostedId → importer)`
+pairs, any integration can fill the gate: a Vite/Rollup/Rolldown plugin
+enumerates boundaries from the module graph at build; webpack/parcel already
+carry their own manifest and can map it into `register()` (or rely on their
+transport's built-in gate). The ESM transport is the case where the gate is
+load-bearing. See
+[Integrating into a bundler or framework](docs/integrating.md).
+
 ## Subpaths
 
 | Subpath | Surface |
@@ -134,6 +197,7 @@ path argument lines up — is in
 | `react-server-loader/loader` | `createReactLoader` → Node ESM `load` / `resolve` hooks; the `Logger` contract + `CONSOLE_LOGGER` / `NULL_LOGGER` backends. |
 | `react-server-loader/directives` | Directive engine: `detectClientModule`, `sourceHasTopLevelClientDirective`, `analyzeModule`. Pure analysis, no transport dependency. |
 | `react-server-loader/transformer` | Source-to-source transform: `createTransformer`, `parse`, `transformModule`. |
+| `react-server-loader/references` | The manifest gate: `createReferenceGate` → a closed `(hostedId → importer)` allowlist with `register` / `seal` / `resolveServerReference` / `resolveClientReference`. Transport-agnostic; closes the open reference resolution. |
 | `react-server-loader/server` (`/server.node`) | Vendored transport, server: `renderToPipeableStream`, `registerClientReference`, `registerServerReference`, `decodeReply`, `createTemporaryReferenceSet` (needs `--conditions react-server`). |
 | `react-server-loader/client` (`/client.node`, `/client.browser`) | Vendored transport, client: `createFromNodeStream`, `createServerReference`. |
 | `react-server-loader/static` (`/static.node`) | Vendored transport, static entry. In this React build it re-exports the server surface — `react-server-dom-esm` ships no separate static module. |
