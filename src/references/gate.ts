@@ -48,6 +48,15 @@ export type ReferenceEntry = {
    */
   load: () => Promise<ModuleExports>;
   kind: ReferenceKind;
+  /**
+   * Optional per-export allowlist (v2). When present, only these export names
+   * resolve for this module — an id naming any other export is rejected even if
+   * that export is a real registered reference at runtime. This makes the
+   * build-time enumeration the source of truth, narrowing the surface from "any
+   * reference export of a registered module" to "exactly the references the
+   * build saw". Omit it to allow any reference export (v1 behaviour).
+   */
+  exportNames?: readonly string[];
 };
 
 export type GateMode = "open" | "sealed";
@@ -135,12 +144,17 @@ export function createReferenceGate(
     id: string,
     expected: ReferenceKind,
   ): Promise<ModuleExports> {
-    const { key } = splitReferenceId(id);
+    const { key, name } = splitReferenceId(id);
     const entry = registry.get(key);
     if (entry) {
       if (entry.kind !== expected) {
         throw new Error(
           `Reference ${JSON.stringify(id)} is registered as a ${entry.kind} reference, not ${expected}.`,
+        );
+      }
+      if (entry.exportNames && !entry.exportNames.includes(name)) {
+        throw new Error(
+          `Export ${JSON.stringify(name)} of ${JSON.stringify(key)} is not in the reference allowlist.`,
         );
       }
       return entry.load();

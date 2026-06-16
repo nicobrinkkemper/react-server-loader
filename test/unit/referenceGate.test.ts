@@ -159,4 +159,53 @@ describe("createReferenceGate", () => {
       /Invalid reference id/,
     );
   });
+
+  describe("per-export allowlist (v2)", () => {
+    it("resolves an allowlisted export", async () => {
+      const gate = createReferenceGate({ mode: "sealed" });
+      gate.register({
+        id: "/app/actions.ts",
+        kind: "server",
+        exportNames: ["addItem", "removeItem"],
+        load: async () => ({
+          addItem: serverRef(() => "added"),
+          removeItem: serverRef(() => "removed"),
+        }),
+      });
+      gate.seal();
+      const ref = await gate.resolveServerReference("/app/actions.ts#addItem");
+      expect((ref as () => string)()).toBe("added");
+    });
+
+    it("rejects an export NOT in the allowlist even if it is a real reference", async () => {
+      const gate = createReferenceGate({ mode: "sealed" });
+      gate.register({
+        id: "/app/actions.ts",
+        kind: "server",
+        exportNames: ["addItem"],
+        // `secret` is a genuine server reference at runtime, but the build never
+        // enumerated it — the allowlist, not the runtime tag, is the authority.
+        load: async () => ({
+          addItem: serverRef(() => "added"),
+          secret: serverRef(() => "leaked"),
+        }),
+      });
+      gate.seal();
+      await expect(
+        gate.resolveServerReference("/app/actions.ts#secret"),
+      ).rejects.toThrow(/not in the reference allowlist/);
+    });
+
+    it("without exportNames, any reference export resolves (v1 behaviour)", async () => {
+      const gate = createReferenceGate({ mode: "sealed" });
+      gate.register({
+        id: "/app/actions.ts",
+        kind: "server",
+        load: async () => ({ anything: serverRef(() => "ok") }),
+      });
+      gate.seal();
+      const ref = await gate.resolveServerReference("/app/actions.ts#anything");
+      expect((ref as () => string)()).toBe("ok");
+    });
+  });
 });
