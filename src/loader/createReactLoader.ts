@@ -2,6 +2,7 @@ import type { LoadHook, ResolveHook } from "node:module";
 import { fileURLToPath } from "node:url";
 import type { RawSourceMap } from "source-map";
 import { detectClientModule } from "../directives/detectClientModule.js";
+import { analyzeModule } from "../directives/analyzeModule.js";
 import { createTransformer } from "../transformer/createTransformer.js";
 import { DEFAULT_LOADER_CONFIG } from "../transformer/defaults.js";
 import {
@@ -43,6 +44,8 @@ export type OnTransformCallback = (info: {
   source: string;
   isServer: boolean;
   isClient: boolean;
+  /** The boundary module's exported names — the references the build enumerated. */
+  exportNames: readonly string[];
 }) => void;
 
 export interface CreateReactLoaderOptions {
@@ -245,6 +248,22 @@ export function createReactLoader(options: CreateReactLoaderOptions): {
       transformedId
     )) as { code: string; map: RawSourceMap | null };
 
+    // Enumerate the boundary's exported names so the gate can narrow to a
+    // per-export allowlist (only these names resolve for this module). Best
+    // effort: if analysis fails we leave it empty and fall back to v1 (any
+    // reference export of a registered module resolves) rather than over-reject.
+    let exportNames: readonly string[] = [];
+    try {
+      const analyzed = await analyzeModule(source);
+      if (analyzed.type === "success" && analyzed.exports) {
+        exportNames = Array.from(analyzed.exports.exports.values()).map(
+          (e) => e.exportName
+        );
+      }
+    } catch {
+      exportNames = [];
+    }
+
     options.onTransform?.({
       url,
       filePath,
@@ -252,6 +271,7 @@ export function createReactLoader(options: CreateReactLoaderOptions): {
       source: transformed,
       isServer,
       isClient,
+      exportNames,
     });
 
     // Register the boundary in the manifest gate (if any), keyed by the hosted
@@ -263,6 +283,7 @@ export function createReactLoader(options: CreateReactLoaderOptions): {
       id: transformedId,
       kind: isServer ? "server" : "client",
       load: () => import(url) as Promise<Record<string, unknown>>,
+      ...(exportNames.length ? { exportNames } : {}),
     });
 
     return {
