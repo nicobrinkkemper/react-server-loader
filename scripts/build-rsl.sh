@@ -99,12 +99,19 @@ fi
 # can't. Silently building the current HEAD would publish a transport from the
 # wrong React (e.g. a stale tag), which for a release is unacceptable.
 echo "==> Checking out React ref '$REACT_REF' ..."
+# Force the switch (-f). React's rollup build stamps packages/shared/ReactVersion.js
+# in place with the channel version, so after a build the checkout is dirty. A
+# plain `git checkout <ref>` then refuses to switch ("local changes would be
+# overwritten"), which means a second train (stable after experimental in
+# --both, or any repeat run) can never check out its ref. -f discards that
+# build scratch — safe here because this checkout is ours to build from (use
+# --react-dir to point at a tree you want left untouched).
 (
   cd "$REACT_DIR"
   git fetch --depth 1 origin "$REACT_REF" 2>/dev/null || true
-  git checkout "$REACT_REF" 2>/dev/null \
-    || git checkout "origin/$REACT_REF" 2>/dev/null \
-    || git checkout FETCH_HEAD 2>/dev/null
+  git checkout -f "$REACT_REF" 2>/dev/null \
+    || git checkout -f "origin/$REACT_REF" 2>/dev/null \
+    || git checkout -f FETCH_HEAD 2>/dev/null
 ) || {
   echo "ERROR: could not check out React ref '$REACT_REF' in $REACT_DIR." >&2
   echo "       Fetch it first (cd $REACT_DIR && git fetch origin $REACT_REF)" >&2
