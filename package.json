@@ -49,14 +49,20 @@
     },
     "./server": "./vendor/react-server-dom-esm/server.node.js",
     "./server.node": "./vendor/react-server-dom-esm/server.node.js",
+    "./server.edge": "./vendor/react-server-dom-esm/server.edge.js",
     "./client": {
+      "workerd": "./vendor/react-server-dom-esm/client.browser.js",
+      "edge-light": "./vendor/react-server-dom-esm/client.browser.js",
+      "deno": "./vendor/react-server-dom-esm/client.browser.js",
       "node": "./vendor/react-server-dom-esm/client.node.js",
       "default": "./vendor/react-server-dom-esm/client.browser.js"
     },
     "./client.browser": "./vendor/react-server-dom-esm/client.browser.js",
     "./client.node": "./vendor/react-server-dom-esm/client.node.js",
+    "./client.edge": "./vendor/react-server-dom-esm/client.edge.js",
     "./static": "./vendor/react-server-dom-esm/static.node.js",
     "./static.node": "./vendor/react-server-dom-esm/static.node.js",
+    "./static.edge": "./vendor/react-server-dom-esm/static.edge.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -64,7 +70,10 @@
     "README.md",
     "LICENSE",
     "vendor",
-    "scripts/build-rsl.sh"
+    "scripts/build-rsl.sh",
+    "scripts/inject-edge-bundle.mjs",
+    "scripts/generate-shims.mjs",
+    "scripts/react-edge-patch"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -73,6 +82,7 @@
     "release": "bash scripts/release.sh",
     "test": "vitest --run",
     "test:transport": "node --conditions=react-server test/transport-smoke.mjs",
+    "test:transport:edge": "node --conditions=react-server test/edge-transport-smoke.mjs",
     "build:vendor": "bash scripts/build-rsl.sh",
     "build:vendor:stable": "bash scripts/build-rsl.sh --channel stable",
     "verify": "bash scripts/verify-release.sh",
