@@ -121,6 +121,14 @@ echo "==> Checking out React ref '$REACT_REF' ..."
 echo "    React now at: $(cd "$REACT_DIR" && git rev-parse --short HEAD) ($(cd "$REACT_DIR" && git describe --tags --always 2>/dev/null))"
 
 echo ""
+echo "==> Injecting esm edge (Web-streams) bundle wiring ..."
+# The forced checkout above restored bundles.js / inlinedHostConfigs.js to
+# pristine. Re-apply the edge source overlay + build-config patches so React's
+# rollup emits react-server-dom-esm-server.edge.* alongside the node bundle.
+# Idempotent; never committed to the React checkout. See inject-edge-bundle.mjs.
+node "$SCRIPT_DIR/inject-edge-bundle.mjs" "$REACT_DIR"
+
+echo ""
 echo "==> Installing React's build dependencies (yarn) ..."
 cd "$REACT_DIR"
 
