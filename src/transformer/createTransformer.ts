@@ -3,6 +3,7 @@ import { transformNonServerEnvironment } from "./transformNonServerEnvironment.j
 import { isReactServerCondition } from "../runtime/env.js";
 import { analyzeModule } from "../directives/index.js";
 import { findDirectiveMatches } from "../directives/findDirectiveMatches.js";
+import { sourceHasTopLevelClientDirective } from "../directives/sourceHasTopLevelClientDirective.js";
 import type { DirectiveMatch } from "../directives/types.js";
 import type { TransformerFactory, TransformResult } from "./types.js";
 import { DEFAULT_LOADER_CONFIG } from "./defaults.js";
@@ -66,9 +67,14 @@ export const createTransformer: TransformerFactory = ({
     const hasServerDirective = matches.matches.some(
       (m: DirectiveMatch) => m.type === "server"
     );
-    const hasClientDirective = matches.matches.some(
-      (m: DirectiveMatch) => m.type === "client"
-    );
+    // `findDirectiveMatches` is a regex that matches the literal `"use client"`
+    // ANYWHERE in the source — including inside string/template literals and JSX
+    // text (e.g. a component that *displays* `"use client"` example code). A
+    // `"use client"` directive is file-level only, so confirm it with the
+    // top-of-file scanner (same robust check `detectClientModule` uses) rather
+    // than trusting the loose regex, which would otherwise misclassify a server
+    // component as a client module and emit a bogus `registerClientReference`.
+    const hasClientDirective = sourceHasTopLevelClientDirective(source);
 
     if (hasClientDirective === false && hasServerDirective === false) {
       // For files without directives, handle differently based on environment
