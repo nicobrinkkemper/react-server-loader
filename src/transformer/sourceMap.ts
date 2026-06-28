@@ -118,13 +118,15 @@ function createMappingsSerializer() {
     originalColumn: number,
     nameIndex: number
   ): string {
-    const values = [
-      generatedColumn,
-      sourceIndex,
-      originalLine,
-      originalColumn,
-      nameIndex,
-    ];
+    // A source-map segment is 1, 4, or 5 fields. The 5th field is an index
+    // into `names`; emitting it with a negative ("no name") index produces a
+    // dangling reference. Rollup tolerated this, but stricter parsers (Oxc /
+    // Rolldown in Vite 8) reject it ("Reference to non-existing name").
+    // Emit a 4-field segment whenever there is no associated name.
+    const values =
+      nameIndex >= 0
+        ? [generatedColumn, sourceIndex, originalLine, originalColumn, nameIndex]
+        : [generatedColumn, sourceIndex, originalLine, originalColumn];
     return encodeVLQ(values);
   };
 }
