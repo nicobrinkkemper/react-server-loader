@@ -13,8 +13,12 @@ import { testLoaderConfig } from "./analyzeModule/testLoaderConfig.js";
 // emitted with `registerClientReference` and then panicked at render with
 // "Attempted to load a Client Module outside the hosted root."
 //
-// The client decision now goes through the top-of-file scanner, which only
-// recognises a real file-level directive.
+// The client decision now goes through the directive engine's AST analysis,
+// which records a file-level directive for a real top-level `"use client"`
+// STATEMENT (placed OR misplaced — the misplaced one stays flagged) but never
+// for a quoted literal. So a quoted occurrence stays server, a correct directive
+// is client, and a genuinely misplaced directive is still recognised (and warned
+// / thrown), rather than silently dropped.
 
 const makeOptions = () => ({
   ...testLoaderConfig,
@@ -66,5 +70,34 @@ export function Counter() {
 
     // Real directive → exports replaced by the client-reference stub.
     expect(result.code).toContain("Attempted to call");
+  });
+
+  it("still recognises a MISPLACED directive (real code before it) rather than dropping it", async () => {
+    // A genuine misplacement: real code precedes `"use client"`. The transform
+    // must still recognise it as a file-level directive and flag it (here, with
+    // panicThreshold "none", downgraded to a logger warning) — not silently skip
+    // it as if the file had no directive. (A char-scanner can't see this; the AST
+    // can.)
+    const warn = vi.fn();
+    const source = `const setupBeforeDirective = 1;
+"use client";
+export function Counter() {
+  return null;
+}`;
+
+    const transformer = createTransformer({
+      options: {
+        ...testLoaderConfig,
+        panicThreshold: "none" as const,
+        logger: { info: vi.fn(), debug: vi.fn(), warn, error: vi.fn() },
+      },
+      isServerEnvironment: true,
+    });
+
+    await transformer(source, "src/Counter.js");
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("must be at the top of the file")
+    );
   });
 });
