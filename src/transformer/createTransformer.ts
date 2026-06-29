@@ -67,14 +67,25 @@ export const createTransformer: TransformerFactory = ({
     const hasServerDirective = matches.matches.some(
       (m: DirectiveMatch) => m.type === "server"
     );
-    // `findDirectiveMatches` is a regex that matches the literal `"use client"`
-    // ANYWHERE in the source — including inside string/template literals and JSX
-    // text (e.g. a component that *displays* `"use client"` example code). A
-    // `"use client"` directive is file-level only, so confirm it with the
-    // top-of-file scanner (same robust check `detectClientModule` uses) rather
-    // than trusting the loose regex, which would otherwise misclassify a server
-    // component as a client module and emit a bogus `registerClientReference`.
-    const hasClientDirective = sourceHasTopLevelClientDirective(source);
+    // `findDirectiveMatches` matches the literal `"use client"` ANYWHERE —
+    // including inside string/template literals and JSX text (a component that
+    // *displays* `"use client"` example code). A regex hit alone can't tell a
+    // real directive from a quoted occurrence, and a top-of-file scanner can't
+    // see a MISPLACED directive (real code before it) that the transform must
+    // still flag. So when a potential client directive is present, parse and ask
+    // the directive engine: a file-level `"client"` entry is recorded for a real
+    // top-level directive STATEMENT (placed OR misplaced — the misplaced one is
+    // flagged separately) and never for a quoted literal. Fall back to the
+    // top-of-file scanner only when the source can't be parsed (e.g. raw JSX).
+    let hasClientDirective = false;
+    if (matches.matches.some((m: DirectiveMatch) => m.type === "client")) {
+      try {
+        const pre = await analyzeModule(source, { ...options, logger, loader });
+        hasClientDirective = pre.directiveInfo?.fileLevel?.type === "client";
+      } catch {
+        hasClientDirective = sourceHasTopLevelClientDirective(source);
+      }
+    }
 
     if (hasClientDirective === false && hasServerDirective === false) {
       // For files without directives, handle differently based on environment
