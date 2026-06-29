@@ -1,6 +1,6 @@
 {
   "name": "react-server-loader",
-  "version": "19.2.12",
+  "version": "19.2.13",
   "description": "Loader-side tooling for React Server Components in ESM environments — directive detection, transformer primitives, and Node ESM loader scaffolding. Transport-agnostic.",
   "type": "module",
   "license": "MIT",
