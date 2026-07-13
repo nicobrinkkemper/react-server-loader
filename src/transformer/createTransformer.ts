@@ -1,7 +1,11 @@
 import { transformModule } from "./transformModule.js";
 import { transformNonServerEnvironment } from "./transformNonServerEnvironment.js";
 import { isReactServerCondition } from "../runtime/env.js";
-import { analyzeModule, looksLikeClientFilename } from "../directives/index.js";
+import {
+  analyzeModule,
+  looksLikeClientFilename,
+  hasDirectiveStatement,
+} from "../directives/index.js";
 import { findDirectiveMatches } from "../directives/findDirectiveMatches.js";
 import { sourceHasTopLevelClientDirective } from "../directives/sourceHasTopLevelClientDirective.js";
 import type { DirectiveMatch } from "../directives/types.js";
@@ -100,12 +104,14 @@ export const createTransformer: TransformerFactory = ({
         const pre = await analyzeModule(source, { ...options, logger, loader });
         const info = pre.directiveInfo;
         hasClientDirective = info?.fileLevel?.type === "client";
-        // A `"use server"` module is either file-level or carries the directive
-        // inside individual exported functions; both are real, a quoted one is
-        // not.
+        // Gate on a real directive STATEMENT anywhere — file prologue or the
+        // prologue of ANY function body. `directiveInfo.functionLevel` is not
+        // enough: it records top-level functions and arrows, but not class
+        // methods or nested declarations, and the downstream transform handles
+        // those. Gating on it would silently skip modules that used to work.
         hasServerDirective =
           info?.fileLevel?.type === "server" ||
-          (info?.functionLevel?.some((f) => f.type === "server") ?? false);
+          hasDirectiveStatement(pre.ast, "use server");
       } catch {
         hasClientDirective =
           mayHaveClient && sourceHasTopLevelClientDirective(source);
@@ -113,7 +119,19 @@ export const createTransformer: TransformerFactory = ({
       }
     }
 
-    if (hasClientDirective === false && hasServerDirective === false) {
+    // An explicit `forceServerFunction: true` / `forceClientComponent: true` is
+    // the caller overriding detection — honour it. Detection used to be loose
+    // enough (a regex hit on a quoted `"use server"`) that a forced module
+    // usually looked directive-bearing anyway and fell through by accident;
+    // tightening detection made the override start getting skipped.
+    const explicitlyForced =
+      forceServerFunction === true || forceClientComponent === true;
+
+    if (
+      hasClientDirective === false &&
+      hasServerDirective === false &&
+      !explicitlyForced
+    ) {
       // For files without directives, handle differently based on environment
 
       // A name like `Foo.client.tsx` reads as an intent to be a client module,

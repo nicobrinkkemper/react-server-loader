@@ -8,6 +8,7 @@ export {
   looksLikeClientFilename,
 } from "./detectClientModule.js";
 export { sourceHasTopLevelClientDirective } from "./sourceHasTopLevelClientDirective.js";
+export { hasDirectiveStatement } from "./hasDirectiveStatement.js";
 export { analyzeModule } from "./analyzeModule.js";
 
 // Public types consumers and frameworks build against.
