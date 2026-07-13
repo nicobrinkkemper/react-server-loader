@@ -66,28 +66,50 @@ export const createTransformer: TransformerFactory = ({
       );
     }
 
-    // Fast-path: skip parsing and transformation if no directives are present
+    // Fast-path: skip parsing and transformation if no directives are present.
+    //
+    // `findDirectiveMatches` matches the literal `"use client"` / `"use server"`
+    // ANYWHERE — including inside string/template literals, comments, and JSX
+    // text (a component that *displays* directive example code). A regex hit
+    // alone can't tell a real directive from a quoted occurrence, and a
+    // top-of-file scanner can't see a MISPLACED directive (real code before it)
+    // that the transform must still flag. So when a hit suggests a directive
+    // MIGHT be present, parse once and ask the directive engine, which records a
+    // directive only for a real directive STATEMENT, never for a quoted literal.
+    //
+    // BOTH sides need this. `react-server-dom-esm`'s own client transport throws
+    // an error whose message contains the words `"use server"`; taking the regex
+    // at its word made the transform treat the transport as a server-action
+    // module and inject a `registerServerReference` import into a file that
+    // already DEFINES `registerServerReference` — a duplicate-declaration parse
+    // error the moment the transport is bundled.
+    //
+    // Fall back to the regex/scanner only when the source can't be parsed.
     const matches = findDirectiveMatches(source);
-    const hasServerDirective = matches.matches.some(
+    const mayHaveClient = matches.matches.some(
+      (m: DirectiveMatch) => m.type === "client"
+    );
+    const mayHaveServer = matches.matches.some(
       (m: DirectiveMatch) => m.type === "server"
     );
-    // `findDirectiveMatches` matches the literal `"use client"` ANYWHERE —
-    // including inside string/template literals and JSX text (a component that
-    // *displays* `"use client"` example code). A regex hit alone can't tell a
-    // real directive from a quoted occurrence, and a top-of-file scanner can't
-    // see a MISPLACED directive (real code before it) that the transform must
-    // still flag. So when a potential client directive is present, parse and ask
-    // the directive engine: a file-level `"client"` entry is recorded for a real
-    // top-level directive STATEMENT (placed OR misplaced — the misplaced one is
-    // flagged separately) and never for a quoted literal. Fall back to the
-    // top-of-file scanner only when the source can't be parsed (e.g. raw JSX).
+
     let hasClientDirective = false;
-    if (matches.matches.some((m: DirectiveMatch) => m.type === "client")) {
+    let hasServerDirective = false;
+    if (mayHaveClient || mayHaveServer) {
       try {
         const pre = await analyzeModule(source, { ...options, logger, loader });
-        hasClientDirective = pre.directiveInfo?.fileLevel?.type === "client";
+        const info = pre.directiveInfo;
+        hasClientDirective = info?.fileLevel?.type === "client";
+        // A `"use server"` module is either file-level or carries the directive
+        // inside individual exported functions; both are real, a quoted one is
+        // not.
+        hasServerDirective =
+          info?.fileLevel?.type === "server" ||
+          (info?.functionLevel?.some((f) => f.type === "server") ?? false);
       } catch {
-        hasClientDirective = sourceHasTopLevelClientDirective(source);
+        hasClientDirective =
+          mayHaveClient && sourceHasTopLevelClientDirective(source);
+        hasServerDirective = mayHaveServer;
       }
     }
 
