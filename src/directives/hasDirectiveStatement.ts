@@ -3,25 +3,45 @@ import type { Program } from "acorn";
 /**
  * Does the module contain a REAL `directive` prologue statement anywhere?
  *
- * "Anywhere" is the point. A `"use server"` directive is legal at the top of the
- * module *or* at the top of any function body — including forms the directive
- * engine's `functionLevel` list does not record (class methods, object methods,
- * nested function declarations). The transformer needs a gate that says "this
- * module has server directives worth transforming", and that gate must be at
- * least as wide as the set the downstream transform can handle, or modules get
- * silently skipped.
+ * React sanctions exactly two placements for `"use server"`
+ * (https://react.dev/reference/rsc/use-server):
+ *
+ *   1. the top of a module, and
+ *   2. the top of an async function BODY.
+ *
+ * (2) is the trap. It includes a function nested inside a component and never
+ * exported — React's own canonical inline Server Function:
+ *
+ *     function EmptyNote() {
+ *       async function createNoteAction() {
+ *         "use server";                 // <- nested, non-exported, supported
+ *         await db.notes.create();
+ *       }
+ *       return <Button onClick={createNoteAction} />;
+ *     }
+ *
+ * The directive engine's `directiveInfo.functionLevel` records top-level
+ * functions and arrows but NOT nested declarations, so a gate built on it drops
+ * that pattern on the floor — the module is never transformed at all. Hence this
+ * walk: any function body, wherever it sits.
+ *
+ * It deliberately does NOT special-case class or object methods out. React does
+ * not document a directive there, and the downstream transform registers nothing
+ * for them (only exported functions are registered), so admitting them costs
+ * nothing; excluding them would mean asserting that an async method body is not
+ * an async function body, which is a claim this gate has no reason to make.
  *
  * It must NOT be a text search. `findDirectiveMatches` regexes the literal
  * anywhere, so a module that merely quotes `"use server"` inside a string or a
  * comment trips it — which is how react-server-dom-esm's own transport (whose
- * error message quotes the directive) ended up being transformed as a
- * server-action module.
+ * error message quotes the directive) ended up transformed as a server-action
+ * module.
  *
  * A directive is an ExpressionStatement holding a plain string literal, in the
  * PROLOGUE — the leading run of such statements — of a Program or a function
  * body. Anything after the first non-string statement is ordinary code, and a
  * string in an expression position is just a string. That distinction is what
- * this walk encodes, and it is why the gate can be wide without being wrong.
+ * lets the gate be wide without being wrong.
  */
 
 const FUNCTION_TYPES = new Set([
