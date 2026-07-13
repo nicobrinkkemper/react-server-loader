@@ -1,7 +1,7 @@
 import { transformModule } from "./transformModule.js";
 import { transformNonServerEnvironment } from "./transformNonServerEnvironment.js";
 import { isReactServerCondition } from "../runtime/env.js";
-import { analyzeModule } from "../directives/index.js";
+import { analyzeModule, looksLikeClientFilename } from "../directives/index.js";
 import { findDirectiveMatches } from "../directives/findDirectiveMatches.js";
 import { sourceHasTopLevelClientDirective } from "../directives/sourceHasTopLevelClientDirective.js";
 import type { DirectiveMatch } from "../directives/types.js";
@@ -11,6 +11,10 @@ import { getNodeEnv } from "../runtime/env.js";
 import { NULL_LOGGER } from "../directives/options.js";
 import pkg from "picocolors";
 const { red, underline } = pkg;
+
+// Warn once per module: a watch-mode rebuild re-transforms the same file on
+// every change, and repeating the advice each time is just noise.
+const warnedClientFilename = new Set<string>();
 
 /**
  * Creates a transformer that handles React Server Components (RSC) boundaries.
@@ -90,16 +94,29 @@ export const createTransformer: TransformerFactory = ({
     if (hasClientDirective === false && hasServerDirective === false) {
       // For files without directives, handle differently based on environment
 
+      // A name like `Foo.client.tsx` reads as an intent to be a client module,
+      // but only `"use client"` actually makes one — here and in every other
+      // React toolchain. Say so instead of guessing: guessing would produce a
+      // file that works under this loader and silently becomes a server module
+      // anywhere else.
+      if (looksLikeClientFilename(moduleId) && !warnedClientFilename.has(moduleId)) {
+        warnedClientFilename.add(moduleId);
+        logger.warn(
+          `${moduleId} is named like a client module but has no "use client" directive, ` +
+            `so it is being treated as a server module. Add "use client" to the top of the ` +
+            `file if that is what you meant — the filename alone is not a portable signal.`
+        );
+      }
+
       if (isServerEnvironment && loader?.isClientComponentByName?.(moduleId, transformedModuleId)) {
-        // In server environment, client components without directives should be transformed to registerClientReference
-        // This handles cases where client components don't have explicit "use client" directives
-        // but are identified by file naming convention (.client.tsx)
+        // Escape hatch only: the DEFAULT `isClientComponentByName` no longer
+        // classifies by filename (see detectClientModule), so this branch is
+        // reached solely when a project supplies its own predicate.
         if (verbose) {
           logger.info(
             `[createTransformer:server] Transforming client file without directive: ${moduleId}`
           );
         }
-        // Set forceClientComponent to true for client components identified by filename
         forceClientComponent = true;
         // Don't return early - let it fall through to transformModule
       } else if (

@@ -260,6 +260,53 @@ Green → safe to publish. Red → do not publish; the script exits non-zero wit
 the failing version named. `npm run verify` is the package-script entry point
 to this gate.
 
+## Gotcha: `npm pack` ships whatever `vendor/` you last built
+
+`vendor/` is **gitignored** — it is a build artifact, not source. So the React
+channel baked into your tree is invisible to `git status`, and a clean-looking
+working tree can still be carrying an experimental transport.
+
+`npm publish` is protected: `prepublishOnly` runs
+[`check-publishable.mjs`](../../scripts/check-publishable.mjs), which fails the
+publish unless `vendor/react-server-dom-esm`'s stamped version equals
+`package.json`'s. **`npm pack` is not.** It only runs `prepack` (a `tsc` build),
+so it will happily produce a tarball whose `dist/` is stable-stamped and whose
+`vendor/` came from the last experimental build you ran.
+
+That tarball installs without complaint and then fails at runtime, deep inside
+the transport, in a way that looks like a bug in the code under test:
+
+```
+TypeError: Cannot read properties of undefined (reading 'add')
+    at new RequestInstance (.../react-server-dom-esm-server.node.production.js)
+```
+
+`TaintRegistryPendingRequests` is an **experimental**-only React internal. The
+error means an experimental-vendored transport is running against a React that
+doesn't expose it — i.e. the transport and React came from different channels.
+It is not a condition problem and not a `use client` problem, though it
+convincingly imitates both.
+
+This bites hardest when hand-packing a tarball to try a change against a
+consumer (vprs, a demo app), because the consumer's React decides whether you
+see it: a stable-React consumer blows up, an `react@experimental` consumer
+passes, and you conclude your change works "sometimes".
+
+Before packing a tarball for a consumer, build the vendor for the channel that
+consumer runs:
+
+```bash
+# check what you're actually holding — these must match
+node -p "require('./package.json').version"
+node -p "require('./vendor/react-server-dom-esm/package.json').version"
+
+# rebuild the vendor for the target channel first
+bash scripts/build-rsl.sh --channel stable   --react-ref v19.2.7
+```
+
+Or skip hand-packing entirely and use `./scripts/release.sh --dry-run`, which
+builds, guards, gates and packs the same way a real release does.
+
 ## End-to-end release checklist
 
 1. `./scripts/build-rsl.sh --channel <c> --react-ref <ref>` — or trigger the
