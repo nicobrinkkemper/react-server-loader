@@ -108,36 +108,74 @@ export async function createTodo(title) {
 });
 
 /**
- * The gate must be at least as WIDE as the set the downstream transform can
- * handle, or modules get silently skipped.
+ * React sanctions exactly two placements for `"use server"`
+ * (https://react.dev/reference/rsc/use-server): the top of a MODULE, and the top
+ * of an async FUNCTION BODY.
+ *
+ * The second one is the trap, because it includes a function nested inside a
+ * component and never exported — React's canonical inline Server Function
+ * (https://react.dev/reference/rsc/server-functions):
+ *
+ *     function EmptyNote() {
+ *       async function createNoteAction() {
+ *         "use server";
+ *         await db.notes.create();
+ *       }
+ *       return <Button onClick={createNoteAction} />;
+ *     }
  *
  * `directiveInfo.functionLevel` records top-level functions and arrows but NOT
- * class methods or nested declarations, so gating on it dropped those modules —
- * they stopped being transformed at all (no source map, no registration).
- * The gate now looks for a real directive STATEMENT in the prologue of ANY
- * function body, which covers every form without re-admitting quoted literals.
+ * nested declarations, so a gate built on it drops that pattern entirely — the
+ * module is never transformed. The gate therefore looks for a real directive
+ * STATEMENT in the prologue of ANY function body, without re-admitting quoted
+ * literals.
+ *
+ * Class and object methods are not a documented placement. They are not excluded
+ * either: the downstream transform registers nothing for them (only exported
+ * functions are registered), so admitting them is a no-op, and excluding them
+ * would mean claiming an async method body is not an async function body.
  */
 describe("the gate: hasDirectiveStatement", () => {
+  // The package's own `parse` is JSX-blind on purpose: in a real build the
+  // bundler hands the transformer a JSX-capable parser (Rollup's `this.parse`),
+  // and when no parser can read the source the transformer falls back to the
+  // regex. So these cases exercise the AST path with parseable sources; the
+  // component below is the React example with its JSX return elided, which
+  // changes nothing about where the directive sits.
   const gate = (source: string) =>
     hasDirectiveStatement(parse(source).ast, "use server");
 
+  // The two placements React documents.
   it.each([
-    ["file-level", `"use server";\nexport const x = 1;`],
-    ["top-level function", `export async function go(){ "use server"; return 1; }`],
-    ["arrow with block body", `export const f = async (x) => { "use server"; return x; };`],
+    ["module top-level", `"use server";\nexport const x = 1;`],
     [
-      "class method",
-      `export class C { async add(a, b) { "use server"; return a + b; } }`,
+      "async function body (top-level)",
+      `export async function go(){ "use server"; return 1; }`,
     ],
     [
-      "object method",
-      `export const api = { async save() { "use server"; return 1; } };`,
+      "async function body (arrow)",
+      `export const f = async (x) => { "use server"; return x; };`,
     ],
     [
-      "nested function declaration",
-      `export function outer(){ function inner(){ "use server"; return 1; } return inner; }`,
+      "async function body nested in a component — React's inline Server Function",
+      `function EmptyNote() {
+  async function createNoteAction() {
+    "use server";
+    await db.notes.create();
+  }
+  return createElement(Button, { onClick: createNoteAction });
+}`,
     ],
-  ])("sees a real directive in a %s", (_name, source) => {
+  ])("sees a real directive at %s", (_name, source) => {
+    expect(gate(source)).toBe(true);
+  });
+
+  // Not documented by React. Admitted only because a method body IS a function
+  // body; nothing downstream registers them.
+  it.each([
+    ["class method", `export class C { async add(a, b) { "use server"; return a + b; } }`],
+    ["object method", `export const api = { async save() { "use server"; return 1; } };`],
+  ])("also sees one in a %s (undocumented placement, registers nothing)", (_name, source) => {
     expect(gate(source)).toBe(true);
   });
 
