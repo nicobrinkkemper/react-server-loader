@@ -3,24 +3,40 @@ import { sourceHasTopLevelClientDirective } from "./sourceHasTopLevelClientDirec
 import type { Program } from "acorn";
 
 /**
- * Filename convention for client modules. Matches a JS-family extension
- * (`.tsx/.ts/.jsx/.js/.mjs/.cjs/.mts/.cts`) on either:
- *   - the dotted suffix convention (`Foo.client.tsx`, `bar.client.mjs`), or
- *   - the standalone basename `client.tsx`/`.ts`/etc. when it sits at the
- *     start of a path or directly after a directory separator
- *     (`src/client.tsx`, `client.tsx`).
+ * Files whose NAME looks like a client module: the dotted suffix convention
+ * (`Foo.client.tsx`) or the standalone basename (`src/client.tsx`).
  *
- * The leading-`(^|[\/.])` anchor is what keeps this strict — substrings like
- * `clientId.ts`, `clientUtils.tsx`, or `src/lib/clientHelpers.ts` are NOT
- * matched, because the character before "client" must be start-of-string,
- * a path separator, or a dot, not a letter.
+ * This is NOT a classifier. A filename never makes a module a client module —
+ * only a top-of-file `"use client"` directive does, because that is the only
+ * signal React itself defines and the only one that travels to another
+ * toolchain. A file that relies on a name is not portable: move it to any other
+ * React setup and it silently becomes a server module.
  *
- * The standalone-basename branch covers the common app-entry convention of
- * naming the client bundle entry `client.tsx`; without it, a project using
- * that name would not be classified as client by filename and any CSS or
- * asset imports from that entry would silently not reach the client bundle.
+ * The pattern survives solely to power a warning ({@link looksLikeClientFilename}),
+ * so a project that named a file `.client.tsx` and forgot the directive is told
+ * to add it instead of silently getting a server module.
+ *
+ * The leading `(^|[\/.])` anchor keeps it strict: `clientId.ts`,
+ * `clientUtils.tsx`, `src/lib/clientHelpers.ts` do NOT match, because the
+ * character before "client" must be start-of-string, a separator, or a dot.
  */
 const CLIENT_FILENAME_PATTERN = /(^|[\/.])client\.[cm]?[jt]sx?$/;
+
+/** Modules inside an installed package — never warned about; not our code. */
+const PACKAGE_PATH_PATTERN = /(^|[\/\\])node_modules[\/\\]/;
+
+/**
+ * True when a FIRST-PARTY file is named like a client module. Callers that have
+ * a logger use this to warn when such a file carries no `"use client"`
+ * directive. Package files are excluded: a dependency's layout is its own
+ * business, and `.client` there routinely means a build-CONDITION variant with
+ * no relation to `"use client"`.
+ */
+export function looksLikeClientFilename(moduleId: string | undefined): boolean {
+  if (!moduleId) return false;
+  if (PACKAGE_PATH_PATTERN.test(moduleId)) return false;
+  return CLIENT_FILENAME_PATTERN.test(moduleId);
+}
 
 export type ParseFn = (
   source: string,
@@ -47,14 +63,17 @@ export type DetectClientModuleOpts = {
 /**
  * Decides whether a module is a React client component.
  *
- * Recognises a module as client when EITHER:
- *   1. its filename matches the `.client.[cm]?[jt]sx?$` convention, OR
- *   2. its source declares a top-of-file `"use client"` directive — leading
- *      whitespace, line/block comments, and a `"use strict"` prologue
- *      tolerated above it (React's contract).
+ * A module is client if and ONLY IF its source declares a top-of-file
+ * `"use client"` directive — leading whitespace, line/block comments, and a
+ * `"use strict"` prologue tolerated above it (React's contract).
  *
- * Substring matches against "client" in identifiers, comments, import paths,
- * or directory names are deliberately rejected.
+ * The filename is deliberately NOT a signal. `Foo.client.tsx` with no directive
+ * is a server module here, exactly as it is under every other React toolchain;
+ * making the name load-bearing would produce files that only work under this
+ * loader. Callers with a logger can use {@link looksLikeClientFilename} to warn
+ * on that case rather than silently guessing. Substring matches against
+ * "client" in identifiers, comments, import paths, or directory names are
+ * likewise rejected.
  *
  * Every call site that needs a "is this client?" answer routes through this
  * helper (transformer, worker react-loader, dev-server file watcher, build
@@ -64,19 +83,16 @@ export type DetectClientModuleOpts = {
  */
 export function detectClientModule({
   source,
-  moduleId,
+  moduleId: _moduleId,
   parseFn,
 }: DetectClientModuleOpts): boolean {
-  // 1. Filename convention. Deterministic, doesn't need source content.
-  if (moduleId && CLIENT_FILENAME_PATTERN.test(moduleId)) return true;
-
-  // 2. Directive in source. Cheap pre-filter; no occurrence of "use client" →
+  // 1. Directive in source. Cheap pre-filter; no occurrence of "use client" →
   //    definitely not a client module, and we avoid both the parse and the
   //    scanner.
   if (!source) return false;
   if (!source.includes("use client")) return false;
 
-  // 3. Prefer the AST path when a parser is available (build transformer).
+  // 2. Prefer the AST path when a parser is available (build transformer).
   if (parseFn) {
     try {
       const ast = parseFn(source, {
@@ -93,11 +109,10 @@ export function detectClientModule({
       );
       return !misplaced;
     } catch {
-      // Parse failure → fall through to the parser-free scanner. A genuine
-      // `.client.*` was already caught in step 1.
+      // Parse failure → fall through to the parser-free scanner.
     }
   }
 
-  // 4. Parser-free fallback. Same structural contract.
+  // 3. Parser-free fallback. Same structural contract.
   return sourceHasTopLevelClientDirective(source);
 }

@@ -42,10 +42,19 @@ const IS_CLIENT_COMPONENT_CODE = (code: string, moduleId?: string) =>
 const IS_CLIENT_COMPONENT_BY_CODE = (code: string) =>
   detectClientModule({ source: code });
 
+/**
+ * Always false: a filename does not make a module a client module — only a
+ * `"use client"` directive does, which is the only signal React defines and the
+ * only one that survives a move to another toolchain. A project that really
+ * wants name-based classification can still supply its own predicate via
+ * `loader.isClientComponentByName`; the transformer honours it. Files named
+ * like client modules but missing the directive get a warning instead of a
+ * silent guess.
+ */
 const IS_CLIENT_COMPONENT_BY_NAME = (
-  moduleId: string,
+  _moduleId: string,
   _transformedModuleId?: string,
-) => detectClientModule({ moduleId });
+) => false;
 
 export const DIRECTIVE_CONFIGS = {
   client: {

@@ -1,7 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { parse } from "acorn";
 import type { Program } from "acorn";
-import { detectClientModule } from "../../src/directives/index.js";
+import {
+  detectClientModule,
+  looksLikeClientFilename,
+} from "../../src/directives/index.js";
 
 /**
  * Unit suite for the client-module detector.
@@ -25,38 +28,64 @@ const acornParse = (src: string): Program =>
   }) as unknown as Program;
 
 describe("detectClientModule (unified client-module detector)", () => {
-  describe("filename pattern (no source)", () => {
+  /**
+   * The filename is NOT a classifier. Only `"use client"` makes a client
+   * module — the one signal React defines and the only one that survives a move
+   * to another toolchain. A name-classified file would work here and silently
+   * become a server module everywhere else.
+   */
+  describe("filename never classifies (no source)", () => {
     it.each([
       // Dotted suffix convention.
       "components/Counter.client.tsx",
       "components/Counter.client.ts",
-      "components/Counter.client.jsx",
       "components/Counter.client.js",
       "components/Counter.client.mjs",
-      "components/Counter.client.cjs",
-      "components/Counter.client.mts",
-      "components/Counter.client.cts",
-      // Standalone-basename convention — common app-entry filename.
+      // Standalone-basename convention — the app client-entry filename.
       "client.tsx",
       "src/client.tsx",
-      "src/client.ts",
-      "src/client.jsx",
       "src/client.js",
-      "src/client.mjs",
-    ])("recognises %s", (moduleId) => {
-      expect(detectClientModule({ moduleId })).toBe(true);
+      // Package paths.
+      "node_modules/vite-plugin-react-server/dist/plugin/stream/index.client.js",
+      "node_modules/some-lib/client.js",
+      // Never-client names.
+      "components/Counter.tsx",
+      "src/lib/clientId.ts",
+      "src/client/foo.ts",
+    ])("does not classify %s without a directive", (moduleId) => {
+      expect(detectClientModule({ moduleId })).toBe(false);
+    });
+
+    it("does not classify a `.client.tsx` even when source is present but undirected", () => {
+      expect(
+        detectClientModule({
+          moduleId: "components/Counter.client.tsx",
+          source: `export const Counter = () => null;`,
+        }),
+      ).toBe(false);
+    });
+  });
+
+  describe("looksLikeClientFilename (warning signal, not a classifier)", () => {
+    it.each([
+      "components/Counter.client.tsx",
+      "src/client.tsx",
+      "client.tsx",
+    ])("flags first-party %s for a warning", (moduleId) => {
+      expect(looksLikeClientFilename(moduleId)).toBe(true);
     });
 
     it.each([
+      // A dependency's layout is its own business — `.client` there routinely
+      // means a build-condition variant, not `"use client"`.
+      "node_modules/vite-plugin-react-server/dist/plugin/stream/index.client.js",
+      "/abs/node_modules/some-lib/client.js",
+      // Substrings must not trip it.
+      "src/lib/clientId.ts",
+      "src/client/foo.ts",
       "components/Counter.tsx",
-      "src/lib/clientId.ts", // substring "client" must NOT trigger
-      "components/clientCode.tsx",
-      "src/lib/clientUtils.ts", // substring with letter prefix must NOT trigger
-      "src/client/foo.ts", // directory named "client" must NOT trigger
-      "src/clients.tsx", // "client" followed by other letters must NOT trigger
-      "src/page/page.tsx",
-    ])("does not flag %s by filename alone", (moduleId) => {
-      expect(detectClientModule({ moduleId })).toBe(false);
+    ])("does not flag %s", (moduleId) => {
+      expect(looksLikeClientFilename(moduleId)).toBe(false);
     });
   });
 
@@ -177,11 +206,20 @@ describe("detectClientModule (unified client-module detector)", () => {
   });
 
   describe("filename + source combined", () => {
-    it("returns true when filename matches even with non-directive source", () => {
+    it("returns false when the filename matches but the source has no directive", () => {
       expect(
         detectClientModule({
           moduleId: "components/Counter.client.tsx",
           source: `export const x = 1;`,
+        }),
+      ).toBe(false);
+    });
+
+    it("returns true when a `.client.` file DOES carry the directive", () => {
+      expect(
+        detectClientModule({
+          moduleId: "components/Counter.client.tsx",
+          source: `"use client";\nexport const x = 1;`,
         }),
       ).toBe(true);
     });
@@ -226,6 +264,37 @@ describe("detectClientModule (unified client-module detector)", () => {
           parseFn: exploding,
         }),
       ).toBe(false);
+    });
+  });
+
+  /**
+   * The concrete regression: vite-plugin-react-server ships
+   * `stream/index.client.js` — server-side stream infrastructure
+   * (`createEdgeHandler`, `renderFlightToHtml`) whose `.client` suffix names a
+   * build-CONDITION variant, not a `"use client"` component. Classifying it by
+   * name replaced every export with a throw-on-call client reference inside a
+   * consumer's server build, breaking the production server that imports
+   * `createEdgeHandler` from exactly that module.
+   */
+  describe("packages are classified by directive alone", () => {
+    it("does not classify vprs's condition-variant stream barrel", () => {
+      expect(
+        detectClientModule({
+          moduleId:
+            "node_modules/vite-plugin-react-server/dist/plugin/stream/index.client.js",
+          source: `export const createEdgeHandler = () => {};`,
+        }),
+      ).toBe(false);
+    });
+
+    it("still honours an explicit `\"use client\"` directive inside a package", () => {
+      expect(
+        detectClientModule({
+          moduleId:
+            "node_modules/vite-plugin-react-server/dist/plugin/router/link.js",
+          source: `"use client";\nexport const Link = () => null;`,
+        }),
+      ).toBe(true);
     });
   });
 });

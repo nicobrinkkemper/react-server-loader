@@ -120,29 +120,46 @@ function detectClientModule(opts: {
 }): boolean;
 ```
 
-Returns `true` when a module is a React **client** component. A module qualifies
-when **either**:
+Returns `true` when a module is a React **client** component — and that means
+exactly one thing: its `source` declares a top-of-file `"use client"` directive
+(leading whitespace, comments, and a `"use strict"` prologue are tolerated above
+it).
 
-1. its `moduleId` matches the `.client.[cm]?[jt]sx?` filename convention
-   (`Foo.client.tsx`, a standalone `client.tsx` entry), or
-2. its `source` declares a top-of-file `"use client"` directive — leading
-   whitespace, comments, and a `"use strict"` prologue are tolerated above it.
+**The filename is not a signal.** `Foo.client.tsx` with no directive is a server
+module here, as it is under every other React toolchain. Naming a file `.client`
+and relying on it would produce a module that works under this loader and
+silently becomes a server module anywhere else, so the loader refuses to guess:
+a first-party file named like a client module but missing the directive gets a
+build **warning** telling you to add it (see `looksLikeClientFilename`).
 
 Substring matches against "client" in identifiers, import paths, comments, or
-directory names are deliberately rejected.
+directory names are likewise rejected.
 
 | Field | Type | Description |
 |---|---|---|
-| `source` | `string` | Module source. If absent/empty, only the filename check applies. |
-| `moduleId` | `string` | Module identifier / file path. If absent, only the source check applies. |
+| `source` | `string` | Module source. The only input that can classify a module. |
+| `moduleId` | `string` | Module identifier / file path. Not used for classification; pass it to `looksLikeClientFilename` if you want the "named like a client module but undirected" warning. |
 | `parseFn` | `(source, options?) => Program` | Optional AST producer. When supplied (e.g. a bundler's `this.parse`), detection uses the JSX/TS-aware AST path; when omitted it falls back to a parser-free char scanner. Both paths agree on well-authored modules. |
 
 ```ts
 import { detectClientModule } from "react-server-loader/directives";
 
 detectClientModule({ source: '"use client";\nexport const x = 1;' }); // true
-detectClientModule({ moduleId: "src/Button.client.tsx" });           // true
+detectClientModule({ moduleId: "src/Button.client.tsx" });           // false — the name proves nothing
 detectClientModule({ source: "const clientId = 1;" });               // false
+```
+
+`.client` in a filename is a naming convention, and a common one for
+build-*condition* variants that have nothing to do with `"use client"` — which
+is why the loader will not read it as intent, least of all inside a dependency,
+where it would force library authors to know this loader's conventions to avoid
+being rewritten.
+
+```ts
+import { looksLikeClientFilename } from "react-server-loader/directives";
+
+looksLikeClientFilename("src/Button.client.tsx");                 // true  → warn
+looksLikeClientFilename("node_modules/some-lib/foo.client.js");   // false → not ours
 ```
 
 ### `sourceHasTopLevelClientDirective(source)`
