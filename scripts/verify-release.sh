@@ -13,9 +13,26 @@ set -euo pipefail
 #   1. Build (or take) the exact rsl tarball that would be published.
 #   2. Install that tarball into a real consumer (vprs by default),
 #      replacing its source link — so we test the packaged bytes, not src.
-#   3. Run the consumer's integration suite against it (real RSC render:
-#      server -> wire -> client). Green = safe to publish; red = stop.
+#   3. Run the consumer's WHOLE suite against it (real RSC render: server ->
+#      wire -> client, plus its unit and typecheck passes). Green = safe to
+#      publish; red = stop.
 #   4. Restore the consumer's original rsl link on exit, ALWAYS.
+#
+# The gate used to run a curated slice (`test:build && test:streams`) to dodge
+# the dev-server harness. That slice has now let two regressions through to npm,
+# both caught by the consumer's UNIT tests and both requiring an emergency patch
+# the same day:
+#
+#   19.2.13  a misplaced `"use client"` was silently dropped instead of throwing
+#            (vprs test/unit/viteInjectedCode)          -> emergency 19.2.14
+#   19.2.15  the `"use server"` gate stopped seeing directives in nested
+#            functions — React's canonical inline Server Function — so those
+#            modules were never transformed at all
+#            (vprs test/unit/source-map, test/unit/createModuleID)
+#                                                        -> emergency 19.2.16
+#
+# A gate that a regression can walk past is not a gate. Run the consumer's own
+# canonical command, not a subset of it. It is slower; a release is rare.
 #
 # Usage:
 #   scripts/verify-release.sh                          # build experimental (default), verify
@@ -24,14 +41,16 @@ set -euo pipefail
 #
 # Env overrides:
 #   CONSUMER_DIR     consumer repo (default: ../vite-plugin-react-server)
-#   VERIFY_TEST_CMD  command run inside the consumer; eval'd
-#                    (default: the full-pipeline integration slice below)
+#   VERIFY_TEST_CMD  command run inside the consumer; eval'd. Narrow it for a
+#                    fast local iteration if you must — but not for a release.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PKG_DIR="$(dirname "$SCRIPT_DIR")"
 CONSUMER_DIR="${CONSUMER_DIR:-$PKG_DIR/../vite-plugin-react-server}"
-# Deterministic full-pipeline tests; avoids the flaky dev-server/e2e harness.
-VERIFY_TEST_CMD="${VERIFY_TEST_CMD:-npm run test:build && npm run test:streams}"
+# The consumer's canonical gate: server + client + unit + typecheck. A strict
+# superset of the old slice (its `test:server` runs every test file under the
+# react-server condition, `test:build`/`test:streams` included).
+VERIFY_TEST_CMD="${VERIFY_TEST_CMD:-npm run test-all}"
 
 CHANNEL=""
 REACT_REF=""
