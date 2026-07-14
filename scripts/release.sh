@@ -14,6 +14,14 @@ set -euo pipefail
 #   npm run release                                  # stable, React v<package.json version>
 #   ./scripts/release.sh --react-ref v19.2.8         # stable, bump to React 19.2.8
 #   ./scripts/release.sh --channel experimental      # experimental train (React main)
+#   ./scripts/release.sh --channel experimental --react-ref <sha> --revision 1
+#                                                   # ship an rsl-only fix against a
+#                                                   # React nightly already published
+#                                                   # against: version gets `.1`, the
+#                                                   # peer keeps naming the real React.
+#                                                   # Without this, an rsl bug on the
+#                                                   # experimental train is stuck until
+#                                                   # React cuts a new nightly.
 #   ./scripts/release.sh --both                      # experimental THEN stable, one command
 #   ./scripts/release.sh --both --stable-ref v19.2.7 --experimental-ref main
 #   ./scripts/release.sh --dry-run                   # build + guard + gate + pack, no publish
@@ -40,9 +48,11 @@ BOTH="false"
 STABLE_REF=""
 EXPERIMENTAL_REF=""
 DRY_RUN="false"
+REVISION=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --channel)          CHANNEL="$2"; shift 2 ;;
+    --revision)         REVISION="$2"; shift 2 ;;
     --react-ref)        REACT_REF="$2"; shift 2 ;;
     --react-dir)        REACT_DIR="$2"; shift 2 ;;
     --both)             BOTH="true"; shift ;;
@@ -60,8 +70,11 @@ release_one() {
   echo ""
   echo "==> Train: channel=$channel  react-ref=$ref  dist-tag=$tag"
   echo "==> [1/4] Building + vendoring the transport ..."
+  # --revision applies to the experimental train only (stable owns its patch in
+  # package.json), so only forward it there — passing it to stable is an error.
   bash "$SCRIPT_DIR/build-rsl.sh" --channel "$channel" --react-ref "$ref" \
-    ${REACT_DIR:+--react-dir "$REACT_DIR"}
+    ${REACT_DIR:+--react-dir "$REACT_DIR"} \
+    $([ "$channel" = "experimental" ] && [ -n "$REVISION" ] && echo "--revision $REVISION")
 
   echo "==> [2/4] Guard + pack ..."
   node "$SCRIPT_DIR/check-publishable.mjs"

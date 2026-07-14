@@ -33,7 +33,13 @@ the version.
 | channel | rsl version | `react`/`react-dom` peer | npm dist-tag |
 | --- | --- | --- | --- |
 | **stable** | `19.<minor>.<rsl-patch>` (e.g. `19.2.8`) | `^<vendored React>` (e.g. `^19.2.7`) | `latest` |
-| **experimental** | `0.0.0-experimental-<sha>-<date>` | that **exact** string | `experimental` |
+| **experimental** | `0.0.0-experimental-<sha>-<date>[.<rsl-revision>]` | that **exact** string, **without** the revision | `experimental` |
+
+Both trains give rsl a revision it owns. That is the whole point of the split
+between the two fields: the peer names React, the version is rsl's. A train
+without a revision slot cannot ship an rsl-only fix — see
+[Why stable owns its patch](#why-stable-owns-its-patch-and-doesnt-just-equal-the-react-version)
+below, which applies verbatim to experimental.
 
 ### Why stable owns its patch (and doesn't just equal the React version)
 
@@ -66,14 +72,25 @@ rsl's own `package.json`, and mirrors the version onto the vendored transport's
   ships. The script warns if `package.json`'s major.minor has drifted from the
   vendored React (set it to `<major>.<minor>.0` when moving to a new React
   minor).
-- **experimental** — synthesizes `0.0.0-experimental-<sha>-<date>` and pins the
-  peer to that exact string. Internals change per commit, so the peer is exact;
+- **experimental** — pins the **peer** to `0.0.0-experimental-<sha>-<date>`, the
+  exact React build vendored. Internals change per commit, so the peer is exact;
   a wider range would let a consumer pair this transport with a *different*
   experimental React and crash on the `ReactSharedInternals` mismatch. `<sha>`
   is the React commit's first 8 chars (`git rev-parse HEAD`); `<date>` is the
   committer date `YYYYMMDD` in the commit's own timezone (matching
-  facebook/react's `build-all-release-channels.js`, **not** UTC). Patch by
-  republishing with a trailing `.N`, which sorts above the original.
+  facebook/react's `build-all-release-channels.js`, **not** UTC).
+
+  The **version** is that same string plus rsl's own optional revision:
+  `--revision 1` stamps `0.0.0-experimental-<sha>-<date>.1`. The peer is left
+  alone — `react@<build>.1` does not exist, so naming it would 404 the consumer's
+  install *and* `verify-release.sh`, which does `npm install react@<peer>` to gate
+  against the matching React.
+
+  The revision is not a nicety. Without it an rsl-only fix has no version to ship
+  under on this train and waits on React's next nightly, which can be days away —
+  and since no rsl version can ever be unpublished (vprs depends on it in the
+  registry), a bad build with nowhere to ship its fix is *permanent*. That is
+  exactly what happened to `0.0.0-experimental-c0c39a6b-20260709`.
 
 The two dist-tags never move each other's pointer, so both trains coexist.
 
