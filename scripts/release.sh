@@ -114,8 +114,21 @@ if [ "$BOTH" = "true" ]; then
   EXP_REF="${EXPERIMENTAL_REF:-main}"
   STB_REF="${STABLE_REF:-$(stable_react_ref)}"
   echo "==> Releasing BOTH trains: experimental ($EXP_REF) then stable ($STB_REF)."
-  # Experimental first; stable last re-stamps package.json back to $STABLE_VERSION.
   release_one experimental "$EXP_REF" experimental
+
+  # The experimental leg STAMPS package.json's version. build-rsl.sh's stable
+  # path never writes a version — it KEEPS whatever package.json holds — so
+  # without this restore, stable inherits the experimental string and tries to
+  # publish `0.0.0-experimental-<sha>` under the `latest` tag. (The peer needs no
+  # restore: the stable build rewrites it to ^<vendored React>.)
+  RSL_STABLE_VERSION="$STABLE_VERSION" node -e '
+    const fs = require("fs");
+    const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    p.version = process.env.RSL_STABLE_VERSION;
+    fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+  '
+  echo "==> Restored package.json to the stable version ($STABLE_VERSION) for the stable leg."
+
   release_one stable "$STB_REF" latest
   echo ""
   echo "==> Both trains done. package.json restored to stable ($STABLE_VERSION)."
