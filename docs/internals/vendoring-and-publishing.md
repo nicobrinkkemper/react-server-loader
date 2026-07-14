@@ -248,17 +248,36 @@ What it does:
    defaults to the sibling `../vite-plugin-react-server` (override with
    `CONSUMER_DIR`); it must already have `node_modules`. The original
    `node_modules/react-server-loader` (symlink or directory) is backed up.
-3. **Run the consumer's integration suite** against the swapped-in package.
-   Default command is `npm run test:build && npm run test:streams` — the
-   deterministic full-pipeline slice (server → wire → client RSC render),
-   avoiding the flaky dev-server/e2e harness. Override with `VERIFY_TEST_CMD`
-   (it's `eval`'d inside the consumer).
+3. **Run the consumer's whole suite** against the swapped-in package. Default
+   command is `npm run test-all` — vprs's own canonical gate: server + client +
+   unit + typecheck. Override with `VERIFY_TEST_CMD` (it's `eval`'d inside the
+   consumer) to narrow it for a fast local loop — but not for a release.
 4. **Always restore** the consumer's original rsl link on exit (an `EXIT`
    trap), pass or fail.
 
 Green → safe to publish. Red → do not publish; the script exits non-zero with
 the failing version named. `npm run verify` is the package-script entry point
 to this gate.
+
+### Why the whole suite, and not a slice
+
+The gate used to run `test:build && test:streams` — examples and streams, but
+never the consumer's unit or typecheck passes — to dodge the dev-server harness.
+That slice let **two** regressions reach npm, both caught by the consumer's unit
+tests, both needing an emergency patch the same day:
+
+| shipped | the regression | caught by | cost |
+| --- | --- | --- | --- |
+| 19.2.13 | a misplaced `"use client"` was silently dropped instead of throwing | `test/unit/viteInjectedCode` | emergency 19.2.14 |
+| 19.2.15 | the `"use server"` gate stopped seeing directives in nested functions — React's canonical inline Server Function — so those modules were never transformed at all | `test/unit/source-map`, `test/unit/createModuleID` | emergency 19.2.16 |
+
+Both were invisible to the slice and loud in the full suite. A gate a regression
+can walk past is not a gate, and the dodge cost more than the flakes it avoided.
+
+The behaviour is pinned by construction: a tarball built from the 19.2.15 source
+passes the old slice (`✅ VERIFY PASSED`) and fails the current gate (`❌ VERIFY
+FAILED`, naming `should handle nested functions with directives`). A release is
+rare; pay the minutes.
 
 ## Gotcha: `npm pack` ships whatever `vendor/` you last built
 
