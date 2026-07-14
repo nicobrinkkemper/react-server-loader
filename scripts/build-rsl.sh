@@ -26,6 +26,13 @@ set -euo pipefail
 #                                     Default: sibling ../react if present,
 #                                     otherwise a shallow clone in
 #                                     .tmp/react/.
+#   --revision <N>                    EXPERIMENTAL ONLY. Append `.N` to the
+#                                     version — an rsl revision on top of the
+#                                     same React build, so an rsl-only fix can
+#                                     ship without waiting for a new React
+#                                     nightly. The peer keeps naming the real
+#                                     React build (no `.N`). Stable owns its
+#                                     patch in package.json and ignores this.
 #
 # Prerequisites:
 #   - yarn (React's repo uses yarn workspaces).
@@ -43,12 +50,14 @@ VENDOR_DIR="$PKG_DIR/vendor"
 CHANNEL="experimental"
 REACT_REF=""
 REACT_DIR=""
+REVISION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --channel) CHANNEL="$2"; shift 2 ;;
     --react-ref) REACT_REF="$2"; shift 2 ;;
     --react-dir) REACT_DIR="$2"; shift 2 ;;
+    --revision) REVISION="$2"; shift 2 ;;
     --help|-h)
       sed -n '/^# Usage:/,/^# Output:/p' "$0" | sed 's/^# //;s/^#//'
       exit 0
@@ -61,6 +70,21 @@ case "$CHANNEL" in
   stable|experimental) ;;
   *) echo "Invalid --channel '$CHANNEL'. Expected stable or experimental." >&2; exit 1 ;;
 esac
+
+# --revision is the experimental train's equivalent of stable's rsl-owned patch:
+# it appends `.N` to the version WITHOUT touching the peer, so an rsl-only fix can
+# ship against a React nightly that has already been published against. Stable
+# already owns its patch in package.json, so the flag is meaningless there.
+if [[ -n "$REVISION" ]]; then
+  if [[ "$CHANNEL" != "experimental" ]]; then
+    echo "--revision applies to the experimental train only; stable owns its patch in package.json." >&2
+    exit 1
+  fi
+  if ! [[ "$REVISION" =~ ^[0-9]+$ ]]; then
+    echo "Invalid --revision '$REVISION'. Expected a non-negative integer (e.g. 1)." >&2
+    exit 1
+  fi
+fi
 
 if [[ -z "$REACT_REF" ]]; then
   if [[ "$CHANNEL" == "stable" ]]; then
@@ -213,15 +237,22 @@ echo "==> Stamping react-server-loader/package.json for channel '$CHANNEL' ..."
 #   stable       -> version = <ReactVersion> (e.g. 19.2.7), peer "^<ReactVersion>".
 #                   React keeps the RSC ABI stable within a major, so ^ floors
 #                   at the vendored build and is safe up to the next major.
-#   experimental -> version = 0.0.0-experimental-<sha>-<date>, peer = that EXACT
-#                   string. Internals change per commit, so the peer must be
-#                   exact — a wider range would let a consumer pair this
-#                   transport with a different experimental React and crash on
-#                   the ReactSharedInternals/"older version of React" mismatch.
+#   experimental -> version = 0.0.0-experimental-<sha>-<date>[.<rsl-revision>],
+#                   peer    = 0.0.0-experimental-<sha>-<date>  (that EXACT string,
+#                             and NEVER with the revision — react@<build>.1 does
+#                             not exist and would 404 the install and the gate).
+#                   Internals change per commit, so the peer must be exact — a
+#                   wider range would let a consumer pair this transport with a
+#                   different experimental React and crash on the
+#                   ReactSharedInternals/"older version of React" mismatch.
 #                   sha  = `git rev-parse HEAD`, first 8 chars
 #                   date = committer date YYYYMMDD in the commit's own tz (matches
 #                          facebook/react build-all-release-channels.js, NOT UTC)
-#                   Patch by republishing with a trailing `.N`.
+#                   `--revision N` appends `.N`: rsl owns its revision on THIS
+#                   train too, so an rsl-only fix can ship against a React
+#                   nightly already published against, instead of waiting for
+#                   React to cut a new one. `.1` sorts above the bare string and
+#                   below any stable version.
 #
 # We are still cd'd into the React checkout here, so git reads its HEAD.
 RSL_SHA=$(git rev-parse HEAD | cut -c1-8)
@@ -229,16 +260,32 @@ RSL_DATE=$(git show -s --no-show-signature --format=%cd --date=format:%Y%m%d "$R
 RSL_DATE=${RSL_DATE#\'}            # strip CI quote-wrapping ('...' )
 RSL_DATE=${RSL_DATE%\'}
 RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
+  RSL_REVISION="$REVISION" \
   RSL_REACT="$REACT_VERSION" RSL_OWN_PKG="$PKG_DIR/package.json" \
   RSL_VENDOR_PKG="$VENDOR_DIR/react-server-dom-esm/package.json" node -e '
   const fs = require("fs");
-  const { RSL_OWN_PKG, RSL_VENDOR_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE, RSL_REACT } = process.env;
+  const { RSL_OWN_PKG, RSL_VENDOR_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE, RSL_REACT, RSL_REVISION } = process.env;
   const pkg = JSON.parse(fs.readFileSync(RSL_OWN_PKG, "utf8"));   // rsl itself
   const reactFull = RSL_REACT;                                    // vendored React in-repo version, e.g. 19.2.7
   let peer;
   if (RSL_CHANNEL === "experimental") {
-    pkg.version = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;    // synthesized (React publish convention)
-    peer = pkg.version;                                           // EXACT pin (internals per-sha)
+    // The React build this transport was vendored from. This string is REAL —
+    // React publishes it — so it is what the peer must name, and what the
+    // release gate installs to test against.
+    const reactBuild = `0.0.0-experimental-${RSL_SHA}-${RSL_DATE}`;
+    peer = reactBuild;                                            // EXACT pin (internals per-sha)
+    // rsl OWNS its version here too, exactly as it does on stable: `.N` is an
+    // rsl revision on top of that React build. Without it, an rsl-only fix (a
+    // loader/transformer bug, no React change) has NO version to ship under and
+    // is stuck until React cuts a new nightly — the same trap the @types-style
+    // patch was introduced to escape on the stable train. `.1` sorts above the
+    // bare string and stays below any stable version, so the dist-tag moves
+    // forward cleanly and plain installs are untouched.
+    //
+    // The peer deliberately does NOT get the revision: react@<build>.1 does not
+    // exist, so naming it would 404 both the install and the release gate (which
+    // installs react@<peer> to test against).
+    pkg.version = RSL_REVISION ? `${reactBuild}.${RSL_REVISION}` : reactBuild;
   } else {
     // stable: @types-style. rsl OWNS its version (kept from package.json) so
     // rsl-only fixes can ship without waiting for a new React; major.minor

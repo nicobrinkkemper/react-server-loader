@@ -48,7 +48,7 @@ matches the React you build against.
 | Train | dist-tag | rsl version | `react` / `react-dom` peer |
 | --- | --- | --- | --- |
 | **stable** | `latest` | `19.<minor>.<rsl-patch>` — e.g. `19.2.8` | `^<vendored React>` — e.g. `^19.2.7` |
-| **experimental** | `experimental` | `0.0.0-experimental-<sha>-<date>` | that **exact** string |
+| **experimental** | `experimental` | `0.0.0-experimental-<sha>-<date>[.<rsl-revision>]` | that **exact** string, **without** the revision |
 
 You need a React **19+** build with React Server Components support either
 way.
@@ -77,11 +77,36 @@ releases — see the internals doc.)
 npm install react-server-loader@experimental react@experimental react-dom@experimental
 ```
 
-The experimental train carries the newest RSC features, and it's stricter.
-Its version is the literal React experimental build string
-(`0.0.0-experimental-<sha>-<date>`), and its peer **pins that exact
-string** — no caret, no range. The matching React has to be the same commit
-rsl was vendored from.
+The experimental train carries the newest RSC features, and it's stricter. Its
+peer **pins the exact React build string** — no caret, no range. The matching
+React has to be the same commit rsl was vendored from.
+
+**rsl owns its revision here too.** The version is the React build string with an
+optional `.N` on the end:
+
+| | |
+| --- | --- |
+| version | `0.0.0-experimental-c0c39a6b-20260709.1` ← `.1` is *rsl revision 1* |
+| peer | `0.0.0-experimental-c0c39a6b-20260709` ← the React build, no revision |
+
+This is the same `@types`-style split stable uses, and it exists for the same
+reason: without it, an **rsl-only fix** (a loader or transformer bug, no React
+change) has *no version to ship under* on this train, and is stuck until React
+cuts a new nightly. That is not hypothetical — it cost us a permanently
+deprecated release. React nightlies can be days apart, and an rsl version can
+never be unpublished (vprs depends on it in the registry, which disqualifies it),
+so a bad experimental build with nowhere to ship its own fix is **permanent**.
+
+`.1` sorts *above* the bare build string and *below* any stable version, so the
+`experimental` dist-tag moves forward cleanly and plain `npm install` is
+untouched. The peer never carries the revision — `react@<build>.1` does not
+exist, and naming it would 404 both the install and the release gate.
+
+Cut one with `--revision`:
+
+```bash
+./scripts/release.sh --channel experimental --react-ref <the React sha> --revision 1
+```
 
 That matters because the `react@experimental` dist-tag moves daily. Grabbing
 `react-server-loader@experimental` and `react@experimental` on different days

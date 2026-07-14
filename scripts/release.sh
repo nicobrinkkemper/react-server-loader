@@ -14,6 +14,14 @@ set -euo pipefail
 #   npm run release                                  # stable, React v<package.json version>
 #   ./scripts/release.sh --react-ref v19.2.8         # stable, bump to React 19.2.8
 #   ./scripts/release.sh --channel experimental      # experimental train (React main)
+#   ./scripts/release.sh --channel experimental --react-ref <sha> --revision 1
+#                                                   # ship an rsl-only fix against a
+#                                                   # React nightly already published
+#                                                   # against: version gets `.1`, the
+#                                                   # peer keeps naming the real React.
+#                                                   # Without this, an rsl bug on the
+#                                                   # experimental train is stuck until
+#                                                   # React cuts a new nightly.
 #   ./scripts/release.sh --both                      # experimental THEN stable, one command
 #   ./scripts/release.sh --both --stable-ref v19.2.7 --experimental-ref main
 #   ./scripts/release.sh --dry-run                   # build + guard + gate + pack, no publish
@@ -40,16 +48,20 @@ BOTH="false"
 STABLE_REF=""
 EXPERIMENTAL_REF=""
 DRY_RUN="false"
+REVISION=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --channel)          CHANNEL="$2"; shift 2 ;;
+    --revision)         REVISION="$2"; shift 2 ;;
     --react-ref)        REACT_REF="$2"; shift 2 ;;
     --react-dir)        REACT_DIR="$2"; shift 2 ;;
     --both)             BOTH="true"; shift ;;
     --stable-ref)       STABLE_REF="$2"; shift 2 ;;
     --experimental-ref) EXPERIMENTAL_REF="$2"; shift 2 ;;
     --dry-run)          DRY_RUN="true"; shift ;;
-    -h|--help)          sed -n '4,30p' "$0"; exit 0 ;;
+    # Anchored on the code, not a line number — a hardcoded range silently
+    # truncates the help the moment anyone adds a line to the header.
+    -h|--help)          sed -n '4,/^SCRIPT_DIR=/p' "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -60,8 +72,11 @@ release_one() {
   echo ""
   echo "==> Train: channel=$channel  react-ref=$ref  dist-tag=$tag"
   echo "==> [1/4] Building + vendoring the transport ..."
+  # --revision applies to the experimental train only (stable owns its patch in
+  # package.json), so only forward it there — passing it to stable is an error.
   bash "$SCRIPT_DIR/build-rsl.sh" --channel "$channel" --react-ref "$ref" \
-    ${REACT_DIR:+--react-dir "$REACT_DIR"}
+    ${REACT_DIR:+--react-dir "$REACT_DIR"} \
+    $([ "$channel" = "experimental" ] && [ -n "$REVISION" ] && echo "--revision $REVISION")
 
   echo "==> [2/4] Guard + pack ..."
   node "$SCRIPT_DIR/check-publishable.mjs"
@@ -99,8 +114,21 @@ if [ "$BOTH" = "true" ]; then
   EXP_REF="${EXPERIMENTAL_REF:-main}"
   STB_REF="${STABLE_REF:-$(stable_react_ref)}"
   echo "==> Releasing BOTH trains: experimental ($EXP_REF) then stable ($STB_REF)."
-  # Experimental first; stable last re-stamps package.json back to $STABLE_VERSION.
   release_one experimental "$EXP_REF" experimental
+
+  # The experimental leg STAMPS package.json's version. build-rsl.sh's stable
+  # path never writes a version — it KEEPS whatever package.json holds — so
+  # without this restore, stable inherits the experimental string and tries to
+  # publish `0.0.0-experimental-<sha>` under the `latest` tag. (The peer needs no
+  # restore: the stable build rewrites it to ^<vendored React>.)
+  RSL_STABLE_VERSION="$STABLE_VERSION" node -e '
+    const fs = require("fs");
+    const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+    p.version = process.env.RSL_STABLE_VERSION;
+    fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+  '
+  echo "==> Restored package.json to the stable version ($STABLE_VERSION) for the stable leg."
+
   release_one stable "$STB_REF" latest
   echo ""
   echo "==> Both trains done. package.json restored to stable ($STABLE_VERSION)."
