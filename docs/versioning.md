@@ -108,10 +108,12 @@ Cut one with `--revision`:
 ./scripts/release.sh --channel experimental --react-ref <the React sha> --revision 1
 ```
 
-That matters because the `react@experimental` dist-tag moves daily. Grabbing
-`react-server-loader@experimental` and `react@experimental` on different days
-can land you on two different commits that won't run together. When in doubt,
-read the exact build off rsl's peer and pin React to it:
+### Pinning React on this train
+
+The exact peer pin matters because the `react@experimental` dist-tag moves daily.
+Grabbing `react-server-loader@experimental` and `react@experimental` on different
+days can land you on two different commits that won't run together. When in
+doubt, read the exact build off rsl's peer and pin React to it:
 
 ```bash
 npm view react-server-loader@experimental peerDependencies
@@ -131,5 +133,3 @@ above) so they resolve to the same day's build.
 - Either way, if the peer-dependency checker warns about a `react` /
   `react-dom` skew, fix it before running — that warning is the early
   signal of the runtime mismatch described above.
-```
-
