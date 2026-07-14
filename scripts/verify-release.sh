@@ -60,7 +60,9 @@ while [ $# -gt 0 ]; do
     --channel)   CHANNEL="$2"; shift 2 ;;
     --react-ref) REACT_REF="$2"; shift 2 ;;
     --tarball)   TARBALL="$2"; shift 2 ;;
-    -h|--help)   sed -n '3,33p' "$0"; exit 0 ;;
+    # Anchored on the code, not a line number — a hardcoded range silently
+    # truncates the help the moment anyone adds a line to the header.
+    -h|--help)   sed -n '3,/^SCRIPT_DIR=/p' "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
