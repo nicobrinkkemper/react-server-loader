@@ -59,7 +59,9 @@ while [ $# -gt 0 ]; do
     --stable-ref)       STABLE_REF="$2"; shift 2 ;;
     --experimental-ref) EXPERIMENTAL_REF="$2"; shift 2 ;;
     --dry-run)          DRY_RUN="true"; shift ;;
-    -h|--help)          sed -n '4,30p' "$0"; exit 0 ;;
+    # Anchored on the code, not a line number — a hardcoded range silently
+    # truncates the help the moment anyone adds a line to the header.
+    -h|--help)          sed -n '4,/^SCRIPT_DIR=/p' "$0" | sed '$d'; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
