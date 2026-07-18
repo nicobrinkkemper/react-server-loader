@@ -299,4 +299,12 @@ await patchPkg(WEBPACK_PKG, (pkg) => {
       (f) => !["plugin.js", "node-register.js"].includes(f)
     );
   }
+  // The upstream package declares webpack itself as a REQUIRED peer — the
+  // reason consuming it straight from npm drags webpack into every install.
+  // This vendored copy serves the ESM/Vite world with the plugin pruned, so
+  // the peer is untrue here. npm never reads a nested package.json's peers
+  // (rsl's root peers are the authoritative ones), but the file shouldn't
+  // claim a dependency the package no longer has.
+  if (pkg.peerDependencies) delete pkg.peerDependencies.webpack;
+  if (pkg.peerDependenciesMeta) delete pkg.peerDependenciesMeta.webpack;
 });
