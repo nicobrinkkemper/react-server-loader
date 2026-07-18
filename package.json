@@ -14,7 +14,8 @@
     "loader",
     "transformer",
     "directives",
-    "react-server-dom-esm"
+    "react-server-dom-esm",
+    "react-server-dom-webpack"
   ],
   "repository": {
     "type": "git",
@@ -63,6 +64,24 @@
     "./static": "./vendor/react-server-dom-esm/static.node.js",
     "./static.node": "./vendor/react-server-dom-esm/static.node.js",
     "./static.edge": "./vendor/react-server-dom-esm/static.edge.js",
+    "./webpack/server": "./vendor/react-server-dom-webpack/server.node.js",
+    "./webpack/server.node": "./vendor/react-server-dom-webpack/server.node.js",
+    "./webpack/server.edge": "./vendor/react-server-dom-webpack/server.edge.js",
+    "./webpack/server.browser": "./vendor/react-server-dom-webpack/server.browser.js",
+    "./webpack/client": {
+      "workerd": "./vendor/react-server-dom-webpack/client.edge.js",
+      "edge-light": "./vendor/react-server-dom-webpack/client.edge.js",
+      "deno": "./vendor/react-server-dom-webpack/client.edge.js",
+      "node": "./vendor/react-server-dom-webpack/client.node.js",
+      "default": "./vendor/react-server-dom-webpack/client.browser.js"
+    },
+    "./webpack/client.browser": "./vendor/react-server-dom-webpack/client.browser.js",
+    "./webpack/client.node": "./vendor/react-server-dom-webpack/client.node.js",
+    "./webpack/client.edge": "./vendor/react-server-dom-webpack/client.edge.js",
+    "./webpack/static": "./vendor/react-server-dom-webpack/static.node.js",
+    "./webpack/static.node": "./vendor/react-server-dom-webpack/static.node.js",
+    "./webpack/static.edge": "./vendor/react-server-dom-webpack/static.edge.js",
+    "./webpack/static.browser": "./vendor/react-server-dom-webpack/static.browser.js",
     "./package.json": "./package.json"
   },
   "files": [
@@ -83,6 +102,8 @@
     "test": "vitest --run",
     "test:transport": "node --conditions=react-server test/transport-smoke.mjs",
     "test:transport:edge": "node --conditions=react-server test/edge-transport-smoke.mjs",
+    "test:transport:webpack": "node --conditions=react-server test/webpack-transport-smoke.mjs",
+    "test:transport:webpack:edge": "node --conditions=react-server test/webpack-edge-transport-smoke.mjs",
     "build:vendor": "bash scripts/build-rsl.sh",
     "build:vendor:stable": "bash scripts/build-rsl.sh --channel stable",
     "verify": "bash scripts/verify-release.sh",

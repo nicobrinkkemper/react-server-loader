@@ -1,15 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the vendored react-server-dom-esm transport that ships inside
-# react-server-loader.
+# Build the vendored RSC transports that ship inside react-server-loader:
+# react-server-dom-esm (dev: real modules, live import) and
+# react-server-dom-webpack (prod: module-map reference resolution).
 #
-# react-server-dom-esm is not published to npm by the React team. This
-# script clones React, runs React's own build pipeline to produce the
-# transport, and copies the result into vendor/ so the package's loader
-# hooks can consume it at runtime.
+# react-server-dom-esm is not published to npm by the React team.
+# react-server-dom-webpack is — but vendoring it from the SAME checkout at
+# the SAME ref keeps both transports bound to one React build's internals
+# under one rsl version (and one rsl revision), instead of asking every
+# consumer to pin two packages to the same nightly by hand. This script
+# clones React, runs React's own build pipeline to produce both transports,
+# and copies the results into vendor/.
 #
-# Only react-server-dom-esm is vendored. React itself and react-dom come
+# Only the transports are vendored. React itself and react-dom come
 # from the consumer's own install (the matching peer-dep range).
 #
 # Usage:
@@ -39,9 +43,10 @@ set -euo pipefail
 #   - Node.js 18+.
 #   - java (for Google Closure Compiler, used by React's build).
 #
-# Output: vendor/react-server-dom-esm/ — package.json from React's source
-# plus the cjs/ and esm/ artifacts from the build. The vendor/ directory is
-# gitignored locally and included in the published npm tarball.
+# Output: vendor/react-server-dom-esm/ and vendor/react-server-dom-webpack/
+# — package.json from React's source plus the cjs/ (and esm/) artifacts from
+# the build. The vendor/ directory is gitignored locally and included in the
+# published npm tarball.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PKG_DIR="$(dirname "$SCRIPT_DIR")"
@@ -163,11 +168,14 @@ fi
 
 yarn install --frozen-lockfile 2>&1 | tail -5
 
-ROLLUP_OUTPUT="$REACT_DIR/build/node_modules/react-server-dom-esm"
-SRC_PKG_JSON="$REACT_DIR/packages/react-server-dom-esm/package.json"
+# Both transports build from the SAME checkout at the SAME ref, so they share
+# one React build's internals and one version. esm is the dev transport (real
+# modules, live import); webpack is the prod transport (module-map reference
+# resolution -> self-contained baked bundles).
+TRANSPORTS="react-server-dom-esm react-server-dom-webpack"
 
 echo ""
-echo "==> Building react-server-dom-esm (~2 min) ..."
+echo "==> Building $TRANSPORTS (~2 min) ..."
 # React's rollup build pulls transitive packages (react, scheduler,
 # react-reconciler, etc.) into the graph even when only one package is
 # requested. The downstream eslint-plugin-react-hooks TypeScript step can
@@ -181,31 +189,53 @@ echo "==> Building react-server-dom-esm (~2 min) ..."
 BUILD_OK=false
 for attempt in 1 2 3; do
   [ "$attempt" -gt 1 ] && echo "    React build produced no output (attempt $((attempt - 1))) — retrying ..."
-  rm -rf "$ROLLUP_OUTPUT"
+  for t in $TRANSPORTS; do rm -rf "$REACT_DIR/build/node_modules/$t"; done
   set +o pipefail
   RELEASE_CHANNEL="$CHANNEL" node scripts/rollup/build.js \
-    react-server-dom-esm 2>&1 | tail -20 || true
+    react-server-dom-esm,react-server-dom-webpack 2>&1 | tail -20 || true
   set -o pipefail
-  if [ -d "$ROLLUP_OUTPUT" ]; then BUILD_OK=true; break; fi
+  BUILD_OK=true
+  for t in $TRANSPORTS; do
+    [ -d "$REACT_DIR/build/node_modules/$t" ] || BUILD_OK=false
+  done
+  [ "$BUILD_OK" = "true" ] && break
 done
 
 if [ "$BUILD_OK" != "true" ]; then
-  echo "ERROR: react-server-dom-esm build output not found at $ROLLUP_OUTPUT" >&2
+  echo "ERROR: transport build output not found under $REACT_DIR/build/node_modules/" >&2
   echo "       React's rollup build failed 3 times. Re-run, or build it by hand:" >&2
-  echo "       (cd $REACT_DIR && RELEASE_CHANNEL=$CHANNEL node scripts/rollup/build.js react-server-dom-esm)" >&2
-  exit 1
-fi
-if [ ! -f "$SRC_PKG_JSON" ]; then
-  echo "ERROR: react-server-dom-esm source package.json not found at $SRC_PKG_JSON" >&2
+  echo "       (cd $REACT_DIR && RELEASE_CHANNEL=$CHANNEL node scripts/rollup/build.js react-server-dom-esm,react-server-dom-webpack)" >&2
   exit 1
 fi
 
+for t in $TRANSPORTS; do
+  if [ ! -f "$REACT_DIR/packages/$t/package.json" ]; then
+    echo "ERROR: $t source package.json not found at $REACT_DIR/packages/$t/package.json" >&2
+    exit 1
+  fi
+done
+
 echo ""
-echo "==> Vendoring react-server-dom-esm into $VENDOR_DIR ..."
-rm -rf "$VENDOR_DIR/react-server-dom-esm"
-mkdir -p "$VENDOR_DIR/react-server-dom-esm"
-cp -r "$ROLLUP_OUTPUT"/. "$VENDOR_DIR/react-server-dom-esm/"
-cp "$SRC_PKG_JSON" "$VENDOR_DIR/react-server-dom-esm/package.json"
+echo "==> Vendoring $TRANSPORTS into $VENDOR_DIR ..."
+for t in $TRANSPORTS; do
+  rm -rf "$VENDOR_DIR/$t"
+  mkdir -p "$VENDOR_DIR/$t"
+  cp -r "$REACT_DIR/build/node_modules/$t"/. "$VENDOR_DIR/$t/"
+  cp "$REACT_DIR/packages/$t/package.json" "$VENDOR_DIR/$t/package.json"
+  for f in LICENSE README.md; do
+    [ -f "$REACT_DIR/packages/$t/$f" ] && cp "$REACT_DIR/packages/$t/$f" "$VENDOR_DIR/$t/$f"
+  done
+done
+
+# The webpack package also builds webpack-consumer artifacts rsl doesn't
+# serve: the webpack bundler plugin, the CJS require() register hook, and the
+# node ESM loader (rsl ships its own loader). Prune them so the tarball stays
+# lean and nothing in the package implies a webpack peer.
+rm -f "$VENDOR_DIR/react-server-dom-webpack/cjs/react-server-dom-webpack-plugin"*.js \
+      "$VENDOR_DIR/react-server-dom-webpack/cjs/react-server-dom-webpack-node-register"*.js \
+      "$VENDOR_DIR/react-server-dom-webpack/esm/react-server-dom-webpack-node-loader"*.js \
+      "$VENDOR_DIR/react-server-dom-webpack/plugin.js" \
+      "$VENDOR_DIR/react-server-dom-webpack/node-register.js"
 
 # React's source includes flow-typed shim files alongside the
 # package.json (index.js, client.js, server.node.js, …). Those source
@@ -214,10 +244,6 @@ cp "$SRC_PKG_JSON" "$VENDOR_DIR/react-server-dom-esm/package.json"
 # shape consumers actually import. Generate the publishable shims
 # here instead of running React's full packaging step (which fails
 # on unrelated downstream packages on a clean checkout).
-PKG_SRC="$REACT_DIR/packages/react-server-dom-esm"
-for f in LICENSE README.md; do
-  [ -f "$PKG_SRC/$f" ] && cp "$PKG_SRC/$f" "$VENDOR_DIR/react-server-dom-esm/$f"
-done
 node "$SCRIPT_DIR/generate-shims.mjs"
 
 REACT_VERSION=$(node -p "require('$VENDOR_DIR/react-server-dom-esm/package.json').version" 2>/dev/null || echo "unknown")
@@ -262,9 +288,10 @@ RSL_DATE=${RSL_DATE%\'}
 RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
   RSL_REVISION="$REVISION" \
   RSL_REACT="$REACT_VERSION" RSL_OWN_PKG="$PKG_DIR/package.json" \
-  RSL_VENDOR_PKG="$VENDOR_DIR/react-server-dom-esm/package.json" node -e '
+  RSL_VENDOR_PKG="$VENDOR_DIR/react-server-dom-esm/package.json" \
+  RSL_VENDOR_PKG_WEBPACK="$VENDOR_DIR/react-server-dom-webpack/package.json" node -e '
   const fs = require("fs");
-  const { RSL_OWN_PKG, RSL_VENDOR_PKG, RSL_CHANNEL, RSL_SHA, RSL_DATE, RSL_REACT, RSL_REVISION } = process.env;
+  const { RSL_OWN_PKG, RSL_VENDOR_PKG, RSL_VENDOR_PKG_WEBPACK, RSL_CHANNEL, RSL_SHA, RSL_DATE, RSL_REACT, RSL_REVISION } = process.env;
   const pkg = JSON.parse(fs.readFileSync(RSL_OWN_PKG, "utf8"));   // rsl itself
   const reactFull = RSL_REACT;                                    // vendored React in-repo version, e.g. 19.2.7
   let peer;
@@ -303,22 +330,24 @@ RSL_CHANNEL="$CHANNEL" RSL_SHA="$RSL_SHA" RSL_DATE="$RSL_DATE" \
   }
   pkg.peerDependencies = { ...pkg.peerDependencies, react: peer, "react-dom": peer };
   fs.writeFileSync(RSL_OWN_PKG, JSON.stringify(pkg, null, 2) + "\n");
-  // Keep the vendored transport package.json version in lockstep with rsl, so
-  // the two are consistent (and the publish guard can assert version === vendor).
-  // For stable this is a no-op (both = React version); for experimental it sets
-  // the transport to the same 0.0.0-experimental-<sha> string.
-  const vpkg = JSON.parse(fs.readFileSync(RSL_VENDOR_PKG, "utf8"));
-  vpkg.version = pkg.version;
-  fs.writeFileSync(RSL_VENDOR_PKG, JSON.stringify(vpkg, null, 2) + "\n");
+  // Keep BOTH vendored transport package.json versions in lockstep with rsl, so
+  // the three are consistent (and the publish guard can assert version === vendor).
+  // For stable this is a no-op (all = React version); for experimental it sets
+  // the transports to the same 0.0.0-experimental-<sha> string.
+  for (const vendorPath of [RSL_VENDOR_PKG, RSL_VENDOR_PKG_WEBPACK]) {
+    const vpkg = JSON.parse(fs.readFileSync(vendorPath, "utf8"));
+    vpkg.version = pkg.version;
+    fs.writeFileSync(vendorPath, JSON.stringify(vpkg, null, 2) + "\n");
+  }
   console.log(`stamped react-server-loader: version=${pkg.version} peer.react=${peer}`);
 '
 
 VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo "unknown")
 
 echo ""
-echo "==> Done. Vendored react-server-dom-esm: $REACT_VERSION (channel $CHANNEL)"
+echo "==> Done. Vendored react-server-dom-esm + react-server-dom-webpack: $REACT_VERSION (channel $CHANNEL)"
 echo "    react-server-loader will publish as: $VERSION  (vendors react $REACT_VERSION)"
-echo "    Output: $VENDOR_DIR/react-server-dom-esm/"
+echo "    Output: $VENDOR_DIR/react-server-dom-esm/ + $VENDOR_DIR/react-server-dom-webpack/"
 echo ""
 echo "package.json now carries the publish-ready version + peer. Next:"
 echo "  npm run verify   # gate against a real consumer"

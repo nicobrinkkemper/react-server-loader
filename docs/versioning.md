@@ -1,8 +1,10 @@
 # Versioning
 
-`react-server-loader` (rsl) bundles a *transport* —
-`react-server-dom-esm`, the RSC wire format that the React team doesn't
-publish to npm. That transport reaches into React's private internals at
+`react-server-loader` (rsl) bundles two *transports*, built from the same
+React checkout at the same ref: `react-server-dom-esm` (which the React team
+doesn't publish to npm) and `react-server-dom-webpack` (which it does — but
+vendoring both from one build keeps them, and the React peer, pinned as a set
+under one rsl version). The transports reach into React's private internals at
 runtime, so rsl can't float free of the React it was built against.
 
 Two fields encode that, and they encode **different** things:

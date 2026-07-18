@@ -23,6 +23,13 @@ to render React Server Components in pure ESM:
 - **A vendored `react-server-dom-esm` transport** — the RSC wire format
   React builds but doesn't ship to npm, vendored so you don't build it from
   source.
+- **A vendored `react-server-dom-webpack` transport** (under
+  `react-server-loader/webpack/*`) — React's module-map transport, built from
+  the *same* React checkout at the *same* ref as the esm one. Where the esm
+  client resolves references by `import(specifier)`, this one resolves them
+  through a client manifest (`id → {id, chunks, name}`) — the closed-registry
+  model a self-contained production bundle needs. One rsl version pins both
+  transports to one React build.
 - **A directive engine** that decides whether a module declares
   `"use client"` or `"use server"` at the top level — without false
   positives on identifiers or strings that merely contain those words.
@@ -201,6 +208,9 @@ load-bearing. See
 | `react-server-loader/server` (`/server.node`) | Vendored transport, server: `renderToPipeableStream`, `registerClientReference`, `registerServerReference`, `decodeReply`, `createTemporaryReferenceSet` (needs `--conditions react-server`). |
 | `react-server-loader/client` (`/client.node`, `/client.browser`) | Vendored transport, client: `createFromNodeStream`, `createServerReference`. |
 | `react-server-loader/static` (`/static.node`) | Vendored transport, static entry. In this React build it re-exports the server surface — `react-server-dom-esm` ships no separate static module. |
+| `react-server-loader/webpack/server` (`/server.node`, `/server.edge`, `/server.browser`) | Vendored `react-server-dom-webpack`, server: `renderToPipeableStream` / `renderToReadableStream` against a webpack-shaped client manifest, plus the decode/register surface (needs `--conditions react-server`). |
+| `react-server-loader/webpack/client` (`/client.browser`, `/client.node`, `/client.edge`) | Vendored `react-server-dom-webpack`, client: manifest-driven decode — `client.edge` takes a `serverConsumerManifest` for in-process HTML decode; `client.browser` consumes `__webpack_require__`-style module/chunk shims. |
+| `react-server-loader/webpack/static` (`/static.node`, `/static.edge`, `/static.browser`) | Vendored `react-server-dom-webpack`, static prerender entries. |
 | `react-server-loader` | Re-exports the full public surface for convenience (headline: `createReactLoader`, `detectClientModule`, `createTransformer`). |
 
 Import only from these subpaths and the symbols named here — they are the

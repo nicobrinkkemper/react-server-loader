@@ -1,17 +1,22 @@
-# Vendoring the transport & cutting releases
+# Vendoring the transports & cutting releases
 
-> Internals. This documents how `react-server-dom-esm` gets into the package
-> and how a release is built and published. For the consumer-facing view, see
-> the README's *Versioning* and *Building a release* sections.
+> Internals. This documents how `react-server-dom-esm` and
+> `react-server-dom-webpack` get into the package and how a release is built
+> and published. For the consumer-facing view, see the README's *Versioning*
+> and *Building a release* sections.
 
-`react-server-loader` ships a *copy* of `react-server-dom-esm` — the RSC
-transport — because the React team does not publish it to npm. The rest of the
+`react-server-loader` ships a *copy* of two RSC transports:
+`react-server-dom-esm` (the dev transport — the React team does not publish it
+to npm) and `react-server-dom-webpack` (the module-map transport for
+self-contained production bundles — published upstream, but vendored here from
+the *same checkout at the same ref* so both transports and the React peer stay
+pinned as a set under one rsl version and one rsl revision). The rest of the
 package (loader, directives, transformer) is ordinary TypeScript built from
-`src/`. The transport, by contrast, has to be produced by React's own build
+`src/`. The transports, by contrast, have to be produced by React's own build
 pipeline and copied in. That is what `scripts/build-rsl.sh` does, and why a
 release is "rebuild against a React ref, then pack."
 
-Only `react-server-dom-esm` is vendored. `react` and `react-dom` are **not** —
+Only the transports are vendored. `react` and `react-dom` are **not** —
 they always come from the consumer's own install (the matching peer-dep range).
 
 ## Versioning
@@ -118,21 +123,26 @@ What it does, in order:
    repo uses yarn workspaces; `yarn` is required (the script errors out if it's
    missing).
 
-3. **Run React's rollup build** for just the transport:
-   `RELEASE_CHANNEL="$CHANNEL" node scripts/rollup/build.js react-server-dom-esm`
+3. **Run React's rollup build** for both transports in one invocation:
+   `RELEASE_CHANNEL="$CHANNEL" node scripts/rollup/build.js
+   react-server-dom-esm,react-server-dom-webpack`
    (~2 min). React's build pulls transitive packages into the graph even when
    one package is requested, and a downstream `eslint-plugin-react-hooks`
    TypeScript step can fail on a clean checkout — so the script disables
    `pipefail` around this step and tolerates a non-zero exit, then **validates
-   the artifacts actually landed** instead of trusting the exit code.
+   the artifacts actually landed** (both output dirs) instead of trusting the
+   exit code.
 
-4. **Validate + vendor.** It requires both the rollup output
-   (`build/node_modules/react-server-dom-esm`) and the source
-   `packages/react-server-dom-esm/package.json` to exist, then clears and
-   recreates `vendor/react-server-dom-esm/`, copies the rollup output into it
-   (the `cjs/` + `esm/` artifacts), and copies React's source `package.json`
-   over the top. `LICENSE` and `README.md` are copied from the source package
-   when present.
+4. **Validate + vendor.** For each transport it requires both the rollup
+   output (`build/node_modules/<transport>`) and the source
+   `packages/<transport>/package.json` to exist, then clears and recreates
+   `vendor/<transport>/`, copies the rollup output into it (the `cjs/` +
+   `esm/` artifacts), and copies React's source `package.json` over the top.
+   `LICENSE` and `README.md` are copied from the source package when present.
+   The webpack package's webpack-consumer artifacts — the bundler plugin, the
+   CJS `require()` register hook, and the node ESM loader (rsl ships its own
+   loader) — are pruned; rsl serves the ESM/Vite world and nothing in the
+   package should imply a webpack peer.
 
 5. **Generate shims** by invoking `scripts/generate-shims.mjs` (see below).
 
@@ -141,25 +151,28 @@ What it does, in order:
    computes `<sha>`/`<date>` and writes rsl's own `version` +
    `peerDependencies.react` / `.react-dom` per the table above. Stable uses the
    vendored React version verbatim; experimental builds the
-   `0.0.0-experimental-<sha>-<date>` string.
+   `0.0.0-experimental-<sha>-<date>` string. The version is mirrored onto both
+   vendored transports' `package.json` files so the publish guard can assert
+   the three agree.
 
-The vendored output lands in `vendor/react-server-dom-esm/`. That directory is
-gitignored locally but **included in the published npm tarball**. Note: because
-the script rewrites `package.json`'s `version`, a throwaway local build should
-be followed by `git checkout package.json` if you don't intend to publish — the
-script prints this reminder.
+The vendored output lands in `vendor/react-server-dom-esm/` and
+`vendor/react-server-dom-webpack/`. That directory is gitignored locally but
+**included in the published npm tarball**. Note: because the script rewrites
+`package.json`'s `version`, a throwaway local build should be followed by
+`git checkout package.json` if you don't intend to publish — the script prints
+this reminder.
 
 ### Shim generation — `scripts/generate-shims.mjs`
 
-React's source-tree shim files (in `packages/react-server-dom-esm/`) are ES
+React's source-tree shim files (in `packages/react-server-dom-*/`) are ES
 modules with `@flow` annotations and aren't directly loadable in Node. React's
 own packaging step rewrites them into the conditional-`require` shape consumers
 import; rather than run that full packaging step (which fails on unrelated
 downstream packages on a clean checkout), this script writes the publishable
-shims directly into `vendor/react-server-dom-esm/`. They're stable across React
-versions — only the file names inside `cjs/` change.
+shims directly into each `vendor/<transport>/` directory. They're stable across
+React versions — only the file names inside `cjs/` change.
 
-The shims it writes:
+The shims it writes for `react-server-dom-esm`:
 
 | shim file | shape |
 | --- | --- |
@@ -177,12 +190,20 @@ The server/static `*.node` shims re-export an explicit list of named symbols:
 `decodeAction`, `decodeFormState`, `registerServerReference`,
 `registerClientReference`, `createTemporaryReferenceSet`.
 
-It then **patches the vendored `package.json` exports map**: React's source map
-points `./server` and `./static` `default` conditions at the throwing
+For `react-server-dom-webpack` it writes the analogous set — `index.js`,
+`client.js`, `client.{browser,node,edge}.js` conditional requires (webpack
+ships a *real* edge client bundle, so `client.edge.js` is a conditional
+require rather than the esm transport's browser alias), throwing `server.js` /
+`static.js`, and named-re-export `server.{node,edge,browser}.js` /
+`static.{node,edge,browser}.js` shims mirroring React's source shim symbol
+lists (plus the stable/experimental `prerender` naming aliases).
+
+It then **patches each vendored `package.json` exports map**: React's source
+maps point `./server` and `./static` `default` conditions at the throwing
 `./server.js` / `./static.js`; the script repoints them at `./server.node.js` /
 `./static.node.js` so the publishable package resolves to a working entry. It
-also deletes the source-only `./src/*` exports entry, which doesn't apply to
-the vendored package.
+also deletes the source-only `./src/*` exports entry, and for webpack the
+pruned `./plugin`, `./node-register`, and `./node-loader` entries.
 
 This is why, in this React build, `react-server-loader/static` re-exports the
 server surface: `react-server-dom-esm` ships no separate static module, so the
