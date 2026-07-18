@@ -48,6 +48,10 @@
       "types": "./dist/references/index.d.ts",
       "default": "./dist/references/index.js"
     },
+    "./webpack/runtime": {
+      "types": "./dist/webpack-runtime/index.d.ts",
+      "default": "./dist/webpack-runtime/index.js"
+    },
     "./server": "./vendor/react-server-dom-esm/server.node.js",
     "./server.node": "./vendor/react-server-dom-esm/server.node.js",
     "./server.edge": "./vendor/react-server-dom-esm/server.edge.js",
@@ -104,6 +108,7 @@
     "test:transport:edge": "node --conditions=react-server test/edge-transport-smoke.mjs",
     "test:transport:webpack": "node --conditions=react-server test/webpack-transport-smoke.mjs",
     "test:transport:webpack:edge": "node --conditions=react-server test/webpack-edge-transport-smoke.mjs",
+    "test:transport:webpack:runtime": "node test/webpack-runtime-encode.mjs && node --conditions=react-server test/webpack-runtime-smoke.mjs",
     "build:vendor": "bash scripts/build-rsl.sh",
     "build:vendor:stable": "bash scripts/build-rsl.sh --channel stable",
     "verify": "bash scripts/verify-release.sh",

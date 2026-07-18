@@ -383,6 +383,50 @@ entry of the vendored transport.
 
 ---
 
+## `react-server-loader/webpack/runtime`
+
+Runtime adapters for the vendored `react-server-dom-webpack` transport
+(`/webpack/*` subpaths). That transport does not import a module system — it
+reads bundler-injected globals (`__webpack_require__`, `__webpack_chunk_load__`,
+and a chunk-filename hook whose spelling differs between the production and
+development builds). These helpers provide those globals from a closed
+registry, so a non-webpack host doesn't re-derive the eval-order and
+async-preload subtleties.
+
+### `installWebpackGlobals(options?): { uninstall() }`
+
+Installs the globals. `modules` is a static closed registry
+(`{ hostedId: moduleExports }` — a baked bundle's module set); `load` is an
+async loader bridged through the chunk protocol (React awaits every chunk
+listed in a reference's metadata before the sync require, so the loader
+resolves during preload and the require reads the cache); `chunkFilename`
+covers both the production (`__webpack_require__.u`) and development
+(`__webpack_get_script_filename__`) spellings. A second install merges;
+a foreign `__webpack_require__` (a live webpack runtime) is refused unless
+`force: true`. The globals are process-wide by the transport's design — one
+registry per process.
+
+### `gateModuleLoader(gate): (chunkId) => Promise<ModuleExports>`
+
+Adapter from the reference gate (`react-server-loader/references`) to the
+`load` option — the action path (`decodeReply` + `serverModuleMap`), where ids
+arrive from the client and must resolve through the sealed, tag-verified
+allowlist. List each server reference's full `moduleId#export` id in its
+metadata `chunks`. Server references only: SSR loading of client components
+takes real component modules (no reference tags), which belong in the static
+`modules` registry.
+
+### `createWebpackClient(options?): Promise<client>`
+
+Installs the globals, **then** loads the vendored webpack flight client for
+`options.target` (`"browser"` default, `"edge"`, `"node"`) and returns its
+surface. Exists because the production `client.browser` build reads
+`__webpack_require__.u` at module-eval time — a static transport import
+hoisted above the install call crashes; this factory owns the ordering so an
+entry point cannot get it wrong.
+
+---
+
 ## Root re-exports
 
 ```ts

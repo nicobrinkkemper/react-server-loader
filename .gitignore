@@ -8,3 +8,4 @@ coverage/
 vendor/
 .tmp/
 *.tgz
+test/.tmp-*
