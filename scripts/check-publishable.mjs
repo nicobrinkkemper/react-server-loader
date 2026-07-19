@@ -36,6 +36,16 @@ function fail(reason) {
   process.exit(1);
 }
 
+// The rebuild hint must name the REACT ref, not rsl's own version — on the
+// stable train those differ (rsl 19.2.17 can vendor React 19.2.7; a
+// `--react-ref v19.2.17` hint points at a tag that may not exist). The peer
+// names the vendored React: `^19.2.7` -> `v19.2.7`; experimental peers are
+// the exact build string already.
+const peerReact = pkg.peerDependencies?.react ?? "";
+const reactRefHint = peerReact.startsWith("^")
+  ? "v" + peerReact.slice(1)
+  : peerReact || "<react-ref>";
+
 for (const [name, requiredFiles] of Object.entries(TRANSPORTS)) {
   const vendorPkgPath = join(root, "vendor", name, "package.json");
 
@@ -43,8 +53,8 @@ for (const [name, requiredFiles] of Object.entries(TRANSPORTS)) {
   if (!existsSync(vendorPkgPath)) {
     fail(
       "the vendored " + name + " transport is missing — vendor/ is not built.\n" +
-        "  Build it:  ./scripts/build-rsl.sh --channel stable --react-ref v" +
-        pkg.version
+        "  Build it:  ./scripts/build-rsl.sh --channel <stable|experimental> --react-ref " +
+        reactRefHint
     );
   }
 
