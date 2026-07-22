@@ -16,5 +16,4 @@ export { gateModuleLoader } from "./gateModuleLoader.js";
 export {
   createWebpackClient,
   type CreateWebpackClientOptions,
-  type WebpackClientTarget,
 } from "./createWebpackClient.js";
