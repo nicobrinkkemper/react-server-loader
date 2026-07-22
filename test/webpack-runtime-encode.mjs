@@ -8,12 +8,18 @@
 //   npm run test:transport:webpack:runtime
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
-import { createWebpackClient } from "react-server-loader/webpack/runtime";
+import { installWebpackGlobals } from "react-server-loader/webpack/runtime";
 
 // Shared contract with step 2 (webpack-runtime-smoke.mjs).
 export const ACTION_ID = "/assets/actions-Bv7pQm1Z.js#increment";
 
-const client = await createWebpackClient({ target: "edge" });
+// The edge build specifically (this runs under plain node, whose conditions
+// would resolve the node build): install globals first, then import — the
+// same install-then-load ordering createWebpackClient owns for the
+// environment-resolved path.
+installWebpackGlobals({});
+const clientMod = await import("react-server-loader/webpack/client.edge");
+const client = clientMod.default ?? clientMod;
 for (const sym of ["createServerReference", "encodeReply", "createFromReadableStream"]) {
   assert.equal(typeof client[sym], "function", `client surface must expose ${sym}`);
 }
@@ -30,4 +36,4 @@ const raw =
     ? { kind: "string", data: body }
     : { kind: "form", data: [...body.entries()] };
 await writeFile(new URL("./.tmp-webpack-runtime-reply.json", import.meta.url), JSON.stringify(raw));
-console.log(`OK runtime encode: ${raw.kind} reply written (createWebpackClient target=edge)`);
+console.log(`OK runtime encode: ${raw.kind} reply written (explicit client.edge import)`);
