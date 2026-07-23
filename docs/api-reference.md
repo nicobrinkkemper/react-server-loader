@@ -418,12 +418,21 @@ takes real component modules (no reference tags), which belong in the static
 
 ### `createWebpackClient(options?): Promise<client>`
 
-Installs the globals, **then** loads the vendored webpack flight client for
-`options.target` (`"browser"` default, `"edge"`, `"node"`) and returns its
-surface. Exists because the production `client.browser` build reads
-`__webpack_require__.u` at module-eval time — a static transport import
+Installs the globals, **then** loads the vendored webpack flight client and
+returns its surface. Exists because the production `client.browser` build
+reads `__webpack_require__.u` at module-eval time — a static transport import
 hoisted above the install call crashes; this factory owns the ordering so an
 entry point cannot get it wrong.
+
+WHICH client build loads is decided by the environment: the import resolves
+`react-server-loader/webpack/client`, whose conditional exports map resolve
+conditions to the right build (browser default, `node`, and the
+`workerd`/`deno`/`edge-light` edge family). Each bundle therefore carries
+exactly its own variant — there is no target option, because a runtime choice
+cannot be tree-shaken and made every bundle ship all three builds. A host
+that needs a specific build imports it explicitly
+(`react-server-loader/webpack/client.edge`) and calls
+`installWebpackGlobals` itself.
 
 ---
 
