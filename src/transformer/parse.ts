@@ -1,5 +1,14 @@
-import { parse as acornParse } from "acorn";
+import { Parser } from "acorn";
+import jsx from "acorn-jsx";
 import type { Program } from "../directives/types.js";
+
+// JSX-capable parser. Component sources routinely reach this path untranspiled
+// (bundler paths that don't pre-strip JSX), and a parse throw downgrades
+// directive detection to the caller's regex fallback — which matches "use
+// server" inside strings, comments, and JSX text. Parsing JSX directly keeps
+// detection structural. TypeScript is still out of scope: TS sources must be
+// stripped (esbuild) before analysis, as the bundler paths already do.
+const JsxParser = Parser.extend(jsx());
 
 /**
  * Parses a module and returns { ast, code, map } to match Rollup's this.parse API.
@@ -15,7 +24,7 @@ export function parse(source: string): { ast: Program, code: string, map?: {
   let sourceMappingEnd = 0;
   let sourceMappingLines = 0;
 
-  const program = acornParse(source, {
+  const program = JsxParser.parse(source, {
     ecmaVersion: 'latest',
     sourceType: 'module',
     locations: true,
