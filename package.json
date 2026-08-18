@@ -48,6 +48,10 @@
       "types": "./dist/references/index.d.ts",
       "default": "./dist/references/index.js"
     },
+    "./manifest": {
+      "types": "./dist/manifest/index.d.ts",
+      "default": "./dist/manifest/index.js"
+    },
     "./webpack/runtime": {
       "types": "./dist/webpack-runtime/index.d.ts",
       "default": "./dist/webpack-runtime/index.js"

@@ -44,9 +44,11 @@ export type ReferenceEntry = {
   id: string;
   /**
    * Importer bound to the REAL module discovered at transform/build time.
-   * Never built from the incoming client id.
+   * Never built from the incoming client id. May return the exports
+   * synchronously (an emitted manifest binds statically-imported namespaces)
+   * or as a promise (`() => import(realUrl)`).
    */
-  load: () => Promise<ModuleExports>;
+  load: () => ModuleExports | Promise<ModuleExports>;
   kind: ReferenceKind;
   /**
    * Optional per-export allowlist (v2). When present, only these export names

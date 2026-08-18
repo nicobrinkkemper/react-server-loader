@@ -36,6 +36,17 @@ describe("public API surface — resolves via the exports map", () => {
     await expect(gate.resolveServerReference("/x.ts#a")).rejects.toThrow();
   });
 
+  it("react-server-loader/manifest", async () => {
+    const m = await import("react-server-loader/manifest");
+    expect(m.emitReferenceManifest).toBeTypeOf("function");
+    expect(m.createManifestCollector).toBeTypeOf("function");
+    const source = m.emitReferenceManifest([
+      { id: "/a.js", specifier: "./a.js", kind: "client", exportNames: ["A"] },
+    ]);
+    expect(source).toContain("export function registerReferences(gate");
+    expect(source).not.toContain("import(");
+  });
+
   it("react-server-loader (root) re-exports the headline three", async () => {
     const m = await import("react-server-loader");
     expect(m.createReactLoader).toBeTypeOf("function");
