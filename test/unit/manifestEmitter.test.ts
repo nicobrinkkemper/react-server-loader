@@ -104,6 +104,28 @@ describe("emitReferenceManifest", () => {
     ).rejects.toThrow(/Unknown client reference/);
   });
 
+  it("seals an open-mode gate shut: unknown ids reject without touching devResolve", async () => {
+    // An open gate with devResolve is the dev default. Once the emitted
+    // manifest seals it, devResolve must be dead — otherwise "sealed" would
+    // still resolve arbitrary ids dynamically.
+    let devResolveCalls = 0;
+    const gate = createReferenceGate({
+      mode: "open",
+      devResolve: async () => {
+        devResolveCalls += 1;
+        return {
+          Widget: { $$typeof: CLIENT_TAG, $$id: "/components/Other.js#Widget" },
+        };
+      },
+    });
+    registerReferences(gate);
+    expect(gate.sealed).toBe(true);
+    await expect(
+      gate.resolveClientReference("/components/Other.js#Widget"),
+    ).rejects.toThrow(/Unknown client reference/);
+    expect(devResolveCalls).toBe(0);
+  });
+
   it("rejects an export outside the emitted exportNames allowlist", async () => {
     const gate = createReferenceGate({ mode: "sealed" });
     registerReferences(gate);
