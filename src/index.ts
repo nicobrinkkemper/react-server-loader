@@ -14,3 +14,4 @@ export {
 export type { LoaderConfig, TransformOptions } from "./transformer/types.js";
 export * from "./loader/index.js";
 export * from "./references/index.js";
+export * from "./manifest/index.js";

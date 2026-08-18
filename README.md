@@ -197,6 +197,16 @@ transport's built-in gate). The ESM transport is the case where the gate is
 load-bearing. See
 [Integrating into a bundler or framework](docs/integrating.md).
 
+**Sealing at build time.** `react-server-loader/manifest` turns that
+enumeration into an artifact: `emitReferenceManifest(entries)` codegens a
+registration module whose loads are **static imports** — the emitted
+`registerReferences(gate)` seals a closed dictionary with zero dynamic
+`import()`, so it works in runtimes that forbid runtime module loading (e.g.
+Cloudflare Workers) and the whole reference graph stays bundler-visible.
+`createManifestCollector()` accumulates entries from the transform path;
+a bundler with its own manifest can build entries directly — both are
+producers for the one emitter.
+
 ## Subpaths
 
 | Subpath | Surface |
@@ -205,6 +215,7 @@ load-bearing. See
 | `react-server-loader/directives` | Directive engine: `detectClientModule`, `sourceHasTopLevelClientDirective`, `analyzeModule`. Pure analysis, no transport dependency. |
 | `react-server-loader/transformer` | Source-to-source transform: `createTransformer`, `parse`, `transformModule`. |
 | `react-server-loader/references` | The manifest gate: `createReferenceGate` → a closed `(hostedId → importer)` allowlist with `register` / `seal` / `resolveServerReference` / `resolveClientReference`. Transport-agnostic; closes the open reference resolution. |
+| `react-server-loader/manifest` | Reference-manifest emitter: `emitReferenceManifest` → codegen a registration module whose loads are static imports (a closed dictionary with zero dynamic `import()`); `createManifestCollector` accumulates entries from the transform path. |
 | `react-server-loader/server` (`/server.node`) | Vendored transport, server: `renderToPipeableStream`, `registerClientReference`, `registerServerReference`, `decodeReply`, `createTemporaryReferenceSet` (needs `--conditions react-server`). |
 | `react-server-loader/client` (`/client.node`, `/client.browser`) | Vendored transport, client: `createFromNodeStream`, `createServerReference`. |
 | `react-server-loader/static` (`/static.node`) | Vendored transport, static entry. In this React build it re-exports the server surface — `react-server-dom-esm` ships no separate static module. |

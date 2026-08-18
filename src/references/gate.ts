@@ -44,9 +44,11 @@ export type ReferenceEntry = {
   id: string;
   /**
    * Importer bound to the REAL module discovered at transform/build time.
-   * Never built from the incoming client id.
+   * Never built from the incoming client id. May return the exports
+   * synchronously (an emitted manifest binds statically-imported namespaces)
+   * or as a promise (`() => import(realUrl)`).
    */
-  load: () => Promise<ModuleExports>;
+  load: () => ModuleExports | Promise<ModuleExports>;
   kind: ReferenceKind;
   /**
    * Optional per-export allowlist (v2). When present, only these export names
@@ -160,7 +162,9 @@ export function createReferenceGate(
       return entry.load();
     }
     // Unknown id. Sealed = the trust boundary: reject. Open = dev convenience.
-    if (mode === "sealed" || !devResolve) {
+    // `sealed` covers an open-mode gate after seal() — once sealed, devResolve
+    // must never run, or seal() would not close the set it claims to close.
+    if (sealed || mode === "sealed" || !devResolve) {
       throw new Error(`Unknown ${expected} reference: ${JSON.stringify(key)}`);
     }
     logger.warn(
