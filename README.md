@@ -12,13 +12,14 @@ engine, transformer primitives, and a Node ESM loader.
 > `0.0.0-experimental-*`).
 
 > **Scope:** use React, but with a native-ESM workflow in mind. Anything
-> that helps you run React (and RSC) in pure ESM belongs here; shipping a
-> *copy* of React does not — `react`/`react-dom` always come from the
-> consumer.
+> that helps you run **and build** React (and RSC) in pure ESM belongs
+> here; shipping a *copy* of React does not — `react`/`react-dom` always
+> come from the consumer.
 
 React doesn't publish an ESM RSC transport to npm. This package fills that
-gap with the four things a bundler, framework, or canonical Node setup needs
-to render React Server Components in pure ESM:
+gap with the pieces a bundler, framework, or canonical Node setup needs to
+render React Server Components in pure ESM — served on demand in dev, or
+compiled to a closed production artifact:
 
 - **A vendored `react-server-dom-esm` transport** — the RSC wire format
   React builds but doesn't ship to npm, vendored so you don't build it from
@@ -31,11 +32,21 @@ to render React Server Components in pure ESM:
   model a self-contained production bundle needs. One rsl version pins both
   transports to one React build.
 - **A directive engine** that decides whether a module declares
-  `"use client"` or `"use server"` at the top level — without false
-  positives on identifiers or strings that merely contain those words.
+  `"use client"` or `"use server"` at the top level — structural detection
+  over a real parse, JSX included (stock acorn rejects JSX; the parser here
+  is extended to accept it), without false positives on identifiers or
+  strings that merely contain those words.
 - **Transformer primitives** that rewrite a directive-bearing module into
   the `registerClientReference` / `registerServerReference` shape the
   transport expects at runtime.
+- **A reference gate and an emitted manifest** — `createReferenceGate`
+  resolves client-supplied reference ids against a build-time allowlist
+  instead of importing what the wire names, and
+  `react-server-loader/manifest` turns that enumeration into a registration
+  artifact whose loads are all static imports. Sealed, the gate is a closed
+  dictionary with zero dynamic `import()`: the reference graph is visible
+  to the consumer's bundler and runs on platforms that forbid dynamic
+  module loading.
 - **A Node ESM loader factory** (`createReactLoader`) that wires the above
   into `node:module#register`, so a plain `node --import … --conditions
   react-server` serves RSC modules with no bundler at all.
